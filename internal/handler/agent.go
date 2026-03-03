@@ -128,9 +128,8 @@ type ChatRequest struct {
 }
 
 const (
-	maxAttachments        = 10
-	maxAttachmentBytes    = 2 * 1024 * 1024 // 单文件约 2MB（仅用于是否内联展示内容，不限制上传）
-	chatUploadsDirName    = "chat_uploads"  // 对话附件保存的根目录（相对当前工作目录）
+	maxAttachments     = 10
+	chatUploadsDirName = "chat_uploads" // 对话附件保存的根目录（相对当前工作目录）
 )
 
 // saveAttachmentsToDateAndConversationDir 将附件保存到 chat_uploads/YYYY-MM-DD/{conversationID}/，返回每个文件的保存路径（与 attachments 顺序一致）
@@ -223,45 +222,19 @@ func userMessageContentForStorage(message string, attachments []ChatAttachment, 
 	return b.String()
 }
 
-// appendAttachmentsToMessage 将附件内容拼接到用户消息末尾；若 savedPaths 与 attachments 一一对应，会先写入“已保存到”路径供大模型按路径读取
-func appendAttachmentsToMessage(msg string, attachments []ChatAttachment, savedPaths []string, logger *zap.Logger) string {
+// appendAttachmentsToMessage 仅将附件的保存路径追加到用户消息末尾，不再内联附件内容，避免上下文过长
+func appendAttachmentsToMessage(msg string, attachments []ChatAttachment, savedPaths []string) string {
 	if len(attachments) == 0 {
 		return msg
 	}
 	var b strings.Builder
 	b.WriteString(msg)
-	if len(savedPaths) == len(attachments) {
-		b.WriteString("\n\n[用户上传的文件已保存到以下路径（可使用 cat/exec 等工具按路径读取）]\n")
-		for i, a := range attachments {
-			b.WriteString(fmt.Sprintf("- %s: %s\n", a.FileName, savedPaths[i]))
-		}
-		b.WriteString("\n[以下为附件内容（便于直接参考）]\n")
-	}
+	b.WriteString("\n\n[用户上传的文件已保存到以下路径（请按需读取文件内容，而不是依赖内联内容）]\n")
 	for i, a := range attachments {
-		b.WriteString(fmt.Sprintf("\n--- 附件 %d: %s ---\n", i+1, a.FileName))
-		content := a.Content
-		mime := strings.ToLower(strings.TrimSpace(a.MimeType))
-		isText := strings.HasPrefix(mime, "text/") || mime == "" ||
-			strings.Contains(mime, "json") || strings.Contains(mime, "xml") ||
-			strings.Contains(mime, "javascript") || strings.Contains(mime, "shell")
-		if isText && len(content) > 0 {
-			if decoded, err := base64.StdEncoding.DecodeString(content); err == nil && len(decoded) > 0 {
-				content = string(decoded)
-			}
-			b.WriteString("```\n")
-			b.WriteString(content)
-			b.WriteString("\n```\n")
+		if i < len(savedPaths) && savedPaths[i] != "" {
+			b.WriteString(fmt.Sprintf("- %s: %s\n", a.FileName, savedPaths[i]))
 		} else {
-			if decoded, err := base64.StdEncoding.DecodeString(content); err == nil {
-				content = string(decoded)
-			}
-			if utf8.ValidString(content) && len(content) < maxAttachmentBytes {
-				b.WriteString("```\n")
-				b.WriteString(content)
-				b.WriteString("\n```\n")
-			} else {
-				b.WriteString(fmt.Sprintf("(二进制文件，约 %d 字节，已保存到上述路径，可按路径读取)\n", len(content)))
-			}
+			b.WriteString(fmt.Sprintf("- %s: （路径未知，可能保存失败）\n", a.FileName))
 		}
 	}
 	return b.String()
@@ -373,7 +346,7 @@ func (h *AgentHandler) AgentLoop(c *gin.Context) {
 			return
 		}
 	}
-	finalMessage = appendAttachmentsToMessage(finalMessage, req.Attachments, savedPaths, h.logger)
+	finalMessage = appendAttachmentsToMessage(finalMessage, req.Attachments, savedPaths)
 
 	// 保存用户消息：有附件时一并保存附件名与路径，刷新后显示、继续对话时大模型也能从历史中拿到路径
 	userContent := userMessageContentForStorage(req.Message, req.Attachments, savedPaths)
@@ -829,8 +802,8 @@ func (h *AgentHandler) AgentLoopStream(c *gin.Context) {
 			return
 		}
 	}
-	// 将附件内容拼接到 finalMessage，便于大模型识别上传了哪些文件及内容
-	finalMessage = appendAttachmentsToMessage(finalMessage, req.Attachments, savedPaths, h.logger)
+	// 仅将附件保存路径追加到 finalMessage，避免将文件内容内联到大模型上下文中
+	finalMessage = appendAttachmentsToMessage(finalMessage, req.Attachments, savedPaths)
 	// 如果roleTools为空，表示使用所有工具（默认角色或未配置工具的角色）
 
 	// 保存用户消息：有附件时一并保存附件名与路径，刷新后显示、继续对话时大模型也能从历史中拿到路径
