@@ -1138,10 +1138,10 @@ async function refreshMonitorPanel(page = null) {
     } catch (error) {
         console.error('刷新监控面板失败:', error);
         if (statsContainer) {
-            statsContainer.innerHTML = `<div class="monitor-error">无法加载统计信息：${escapeHtml(error.message)}</div>`;
+            statsContainer.innerHTML = `<div class="monitor-error">${escapeHtml(typeof window.t === 'function' ? window.t('mcpMonitor.loadStatsError') : '无法加载统计信息')}：${escapeHtml(error.message)}</div>`;
         }
         if (execContainer) {
-            execContainer.innerHTML = `<div class="monitor-error">无法加载执行记录：${escapeHtml(error.message)}</div>`;
+            execContainer.innerHTML = `<div class="monitor-error">${escapeHtml(typeof window.t === 'function' ? window.t('mcpMonitor.loadExecutionsError') : '无法加载执行记录')}：${escapeHtml(error.message)}</div>`;
         }
     }
 }
@@ -1215,10 +1215,10 @@ async function refreshMonitorPanelWithFilter(statusFilter = 'all', toolFilter = 
     } catch (error) {
         console.error('刷新监控面板失败:', error);
         if (statsContainer) {
-            statsContainer.innerHTML = `<div class="monitor-error">无法加载统计信息：${escapeHtml(error.message)}</div>`;
+            statsContainer.innerHTML = `<div class="monitor-error">${escapeHtml(typeof window.t === 'function' ? window.t('mcpMonitor.loadStatsError') : '无法加载统计信息')}：${escapeHtml(error.message)}</div>`;
         }
         if (execContainer) {
-            execContainer.innerHTML = `<div class="monitor-error">无法加载执行记录：${escapeHtml(error.message)}</div>`;
+            execContainer.innerHTML = `<div class="monitor-error">${escapeHtml(typeof window.t === 'function' ? window.t('mcpMonitor.loadExecutionsError') : '无法加载执行记录')}：${escapeHtml(error.message)}</div>`;
         }
     }
 }
@@ -1232,7 +1232,8 @@ function renderMonitorStats(statsMap = {}, lastFetchedAt = null) {
 
     const entries = Object.values(statsMap);
     if (entries.length === 0) {
-        container.innerHTML = '<div class="monitor-empty">暂无统计数据</div>';
+        const noStats = typeof window.t === 'function' ? window.t('mcpMonitor.noStatsData') : '暂无统计数据';
+        container.innerHTML = '<div class="monitor-empty">' + escapeHtml(noStats) + '</div>';
         return;
     }
 
@@ -1252,24 +1253,32 @@ function renderMonitorStats(statsMap = {}, lastFetchedAt = null) {
     );
 
     const successRate = totals.total > 0 ? ((totals.success / totals.total) * 100).toFixed(1) : '0.0';
-    const lastUpdatedText = lastFetchedAt ? lastFetchedAt.toLocaleString('zh-CN') : 'N/A';
-    const lastCallText = totals.lastCallTime ? totals.lastCallTime.toLocaleString('zh-CN') : '暂无调用';
+    const locale = (typeof window.__locale === 'string' && window.__locale.startsWith('zh')) ? 'zh-CN' : undefined;
+    const lastUpdatedText = lastFetchedAt ? (lastFetchedAt.toLocaleString ? lastFetchedAt.toLocaleString(locale || 'en-US') : String(lastFetchedAt)) : 'N/A';
+    const noCallsYet = typeof window.t === 'function' ? window.t('mcpMonitor.noCallsYet') : '暂无调用';
+    const lastCallText = totals.lastCallTime ? (totals.lastCallTime.toLocaleString ? totals.lastCallTime.toLocaleString(locale || 'en-US') : String(totals.lastCallTime)) : noCallsYet;
+    const totalCallsLabel = typeof window.t === 'function' ? window.t('mcpMonitor.totalCalls') : '总调用次数';
+    const successFailedLabel = typeof window.t === 'function' ? window.t('mcpMonitor.successFailed', { success: totals.success, failed: totals.failed }) : `成功 ${totals.success} / 失败 ${totals.failed}`;
+    const successRateLabel = typeof window.t === 'function' ? window.t('mcpMonitor.successRate') : '成功率';
+    const statsFromAll = typeof window.t === 'function' ? window.t('mcpMonitor.statsFromAllTools') : '统计自全部工具调用';
+    const lastCallLabel = typeof window.t === 'function' ? window.t('mcpMonitor.lastCall') : '最近一次调用';
+    const lastRefreshLabel = typeof window.t === 'function' ? window.t('mcpMonitor.lastRefreshTime') : '最后刷新时间';
 
     let html = `
         <div class="monitor-stat-card">
-            <h4>总调用次数</h4>
+            <h4>${escapeHtml(totalCallsLabel)}</h4>
             <div class="monitor-stat-value">${totals.total}</div>
-            <div class="monitor-stat-meta">成功 ${totals.success} / 失败 ${totals.failed}</div>
+            <div class="monitor-stat-meta">${escapeHtml(successFailedLabel)}</div>
         </div>
         <div class="monitor-stat-card">
-            <h4>成功率</h4>
+            <h4>${escapeHtml(successRateLabel)}</h4>
             <div class="monitor-stat-value">${successRate}%</div>
-            <div class="monitor-stat-meta">统计自全部工具调用</div>
+            <div class="monitor-stat-meta">${escapeHtml(statsFromAll)}</div>
         </div>
         <div class="monitor-stat-card">
-            <h4>最近一次调用</h4>
-            <div class="monitor-stat-value" style="font-size:1rem;">${lastCallText}</div>
-            <div class="monitor-stat-meta">最后刷新时间：${lastUpdatedText}</div>
+            <h4>${escapeHtml(lastCallLabel)}</h4>
+            <div class="monitor-stat-value" style="font-size:1rem;">${escapeHtml(lastCallText)}</div>
+            <div class="monitor-stat-meta">${escapeHtml(lastRefreshLabel)}：${escapeHtml(lastUpdatedText)}</div>
         </div>
     `;
 
@@ -1280,14 +1289,16 @@ function renderMonitorStats(statsMap = {}, lastFetchedAt = null) {
         .sort((a, b) => (b.totalCalls || 0) - (a.totalCalls || 0))
         .slice(0, 4);
 
+    const unknownToolLabel = typeof window.t === 'function' ? window.t('mcpMonitor.unknownTool') : '未知工具';
     topTools.forEach(tool => {
         const toolSuccessRate = tool.totalCalls > 0 ? ((tool.successCalls || 0) / tool.totalCalls * 100).toFixed(1) : '0.0';
+        const toolMeta = typeof window.t === 'function' ? window.t('mcpMonitor.successFailedRate', { success: tool.successCalls || 0, failed: tool.failedCalls || 0, rate: toolSuccessRate }) : `成功 ${tool.successCalls || 0} / 失败 ${tool.failedCalls || 0} · 成功率 ${toolSuccessRate}%`;
         html += `
             <div class="monitor-stat-card">
-                <h4>${escapeHtml(tool.toolName || '未知工具')}</h4>
+                <h4>${escapeHtml(tool.toolName || unknownToolLabel)}</h4>
                 <div class="monitor-stat-value">${tool.totalCalls || 0}</div>
                 <div class="monitor-stat-meta">
-                    成功 ${tool.successCalls || 0} / 失败 ${tool.failedCalls || 0} · 成功率 ${toolSuccessRate}%
+                    ${escapeHtml(toolMeta)}
                 </div>
             </div>
         `;
@@ -1307,10 +1318,12 @@ function renderMonitorExecutions(executions = [], statusFilter = 'all') {
         const toolFilter = document.getElementById('monitor-tool-filter');
         const currentToolFilter = toolFilter ? toolFilter.value : 'all';
         const hasFilter = (statusFilter && statusFilter !== 'all') || (currentToolFilter && currentToolFilter !== 'all');
+        const noRecordsFilter = typeof window.t === 'function' ? window.t('mcpMonitor.noRecordsWithFilter') : '当前筛选条件下暂无记录';
+        const noExecutions = typeof window.t === 'function' ? window.t('mcpMonitor.noExecutions') : '暂无执行记录';
         if (hasFilter) {
-            container.innerHTML = '<div class="monitor-empty">当前筛选条件下暂无记录</div>';
+            container.innerHTML = '<div class="monitor-empty">' + escapeHtml(noRecordsFilter) + '</div>';
         } else {
-            container.innerHTML = '<div class="monitor-empty">暂无执行记录</div>';
+            container.innerHTML = '<div class="monitor-empty">' + escapeHtml(noExecutions) + '</div>';
         }
         // 隐藏批量操作栏
         const batchActions = document.getElementById('monitor-batch-actions');
@@ -1322,14 +1335,22 @@ function renderMonitorExecutions(executions = [], statusFilter = 'all') {
 
     // 由于筛选已经在后端完成，这里直接使用所有传入的执行记录
     // 不再需要前端再次筛选，因为后端已经返回了筛选后的数据
+    const unknownLabel = typeof window.t === 'function' ? window.t('mcpMonitor.unknown') : '未知';
+    const unknownToolLabel = typeof window.t === 'function' ? window.t('mcpMonitor.unknownTool') : '未知工具';
+    const viewDetailLabel = typeof window.t === 'function' ? window.t('mcpMonitor.viewDetail') : '查看详情';
+    const deleteLabel = typeof window.t === 'function' ? window.t('mcpMonitor.delete') : '删除';
+    const deleteExecTitle = typeof window.t === 'function' ? window.t('mcpMonitor.deleteExecTitle') : '删除此执行记录';
+    const statusKeyMap = { pending: 'statusPending', running: 'statusRunning', completed: 'statusCompleted', failed: 'statusFailed' };
+    const locale = (typeof window.__locale === 'string' && window.__locale.startsWith('zh')) ? 'zh-CN' : undefined;
     const rows = executions
         .map(exec => {
             const status = (exec.status || 'unknown').toLowerCase();
             const statusClass = `monitor-status-chip ${status}`;
-            const statusLabel = getStatusText(status);
-            const startTime = exec.startTime ? new Date(exec.startTime).toLocaleString('zh-CN') : '未知';
+            const statusKey = statusKeyMap[status];
+            const statusLabel = (typeof window.t === 'function' && statusKey) ? window.t('mcpMonitor.' + statusKey) : getStatusText(status);
+            const startTime = exec.startTime ? (new Date(exec.startTime).toLocaleString ? new Date(exec.startTime).toLocaleString(locale || 'en-US') : String(exec.startTime)) : unknownLabel;
             const duration = formatExecutionDuration(exec.startTime, exec.endTime);
-            const toolName = escapeHtml(exec.toolName || '未知工具');
+            const toolName = escapeHtml(exec.toolName || unknownToolLabel);
             const executionId = escapeHtml(exec.id || '');
             return `
                 <tr>
@@ -1337,13 +1358,13 @@ function renderMonitorExecutions(executions = [], statusFilter = 'all') {
                         <input type="checkbox" class="monitor-execution-checkbox" value="${executionId}" onchange="updateBatchActionsState()" />
                     </td>
                     <td>${toolName}</td>
-                    <td><span class="${statusClass}">${statusLabel}</span></td>
-                    <td>${startTime}</td>
-                    <td>${duration}</td>
+                    <td><span class="${statusClass}">${escapeHtml(statusLabel)}</span></td>
+                    <td>${escapeHtml(startTime)}</td>
+                    <td>${escapeHtml(duration)}</td>
                     <td>
                         <div class="monitor-execution-actions">
-                            <button class="btn-secondary" onclick="showMCPDetail('${executionId}')">查看详情</button>
-                            <button class="btn-secondary btn-delete" onclick="deleteExecution('${executionId}')" title="删除此执行记录">删除</button>
+                            <button class="btn-secondary" onclick="showMCPDetail('${executionId}')">${escapeHtml(viewDetailLabel)}</button>
+                            <button class="btn-secondary btn-delete" onclick="deleteExecution('${executionId}')" title="${escapeHtml(deleteExecTitle)}">${escapeHtml(deleteLabel)}</button>
                         </div>
                     </td>
                 </tr>
@@ -1365,6 +1386,11 @@ function renderMonitorExecutions(executions = [], statusFilter = 'all') {
     // 创建表格容器
     const tableContainer = document.createElement('div');
     tableContainer.className = 'monitor-table-container';
+    const colTool = typeof window.t === 'function' ? window.t('mcpMonitor.columnTool') : '工具';
+    const colStatus = typeof window.t === 'function' ? window.t('mcpMonitor.columnStatus') : '状态';
+    const colStartTime = typeof window.t === 'function' ? window.t('mcpMonitor.columnStartTime') : '开始时间';
+    const colDuration = typeof window.t === 'function' ? window.t('mcpMonitor.columnDuration') : '耗时';
+    const colActions = typeof window.t === 'function' ? window.t('mcpMonitor.columnActions') : '操作';
     tableContainer.innerHTML = `
         <table class="monitor-table">
             <thead>
@@ -1372,11 +1398,11 @@ function renderMonitorExecutions(executions = [], statusFilter = 'all') {
                     <th style="width: 40px;">
                         <input type="checkbox" id="monitor-select-all" onchange="toggleSelectAll(this)" />
                     </th>
-                    <th>工具</th>
-                    <th>状态</th>
-                    <th>开始时间</th>
-                    <th>耗时</th>
-                    <th>操作</th>
+                    <th>${escapeHtml(colTool)}</th>
+                    <th>${escapeHtml(colStatus)}</th>
+                    <th>${escapeHtml(colStartTime)}</th>
+                    <th>${escapeHtml(colDuration)}</th>
+                    <th>${escapeHtml(colActions)}</th>
                 </tr>
             </thead>
             <tbody>${rows}</tbody>
@@ -1415,12 +1441,18 @@ function renderMonitorPagination() {
     // 处理没有数据的情况
     const startItem = total === 0 ? 0 : (page - 1) * pageSize + 1;
     const endItem = total === 0 ? 0 : Math.min(page * pageSize, total);
-    
+    const paginationInfoText = typeof window.t === 'function' ? window.t('mcpMonitor.paginationInfo', { start: startItem, end: endItem, total: total }) : `显示 ${startItem}-${endItem} / 共 ${total} 条记录`;
+    const perPageLabel = typeof window.t === 'function' ? window.t('mcpMonitor.perPageLabel') : '每页显示';
+    const firstPageLabel = typeof window.t === 'function' ? window.t('mcp.firstPage') : '首页';
+    const prevPageLabel = typeof window.t === 'function' ? window.t('mcp.prevPage') : '上一页';
+    const pageInfoText = typeof window.t === 'function' ? window.t('mcp.pageInfo', { page: page, total: totalPages || 1 }) : `第 ${page} / ${totalPages || 1} 页`;
+    const nextPageLabel = typeof window.t === 'function' ? window.t('mcp.nextPage') : '下一页';
+    const lastPageLabel = typeof window.t === 'function' ? window.t('mcp.lastPage') : '末页';
     pagination.innerHTML = `
         <div class="pagination-info">
-            <span>显示 ${startItem}-${endItem} / 共 ${total} 条记录</span>
+            <span>${escapeHtml(paginationInfoText)}</span>
             <label class="pagination-page-size">
-                每页显示
+                ${escapeHtml(perPageLabel)}
                 <select id="monitor-page-size" onchange="changeMonitorPageSize()">
                     <option value="10" ${pageSize === 10 ? 'selected' : ''}>10</option>
                     <option value="20" ${pageSize === 20 ? 'selected' : ''}>20</option>
@@ -1430,11 +1462,11 @@ function renderMonitorPagination() {
             </label>
         </div>
         <div class="pagination-controls">
-            <button class="btn-secondary" onclick="refreshMonitorPanel(1)" ${page === 1 || total === 0 ? 'disabled' : ''}>首页</button>
-            <button class="btn-secondary" onclick="refreshMonitorPanel(${page - 1})" ${page === 1 || total === 0 ? 'disabled' : ''}>上一页</button>
-            <span class="pagination-page">第 ${page} / ${totalPages || 1} 页</span>
-            <button class="btn-secondary" onclick="refreshMonitorPanel(${page + 1})" ${page >= totalPages || total === 0 ? 'disabled' : ''}>下一页</button>
-            <button class="btn-secondary" onclick="refreshMonitorPanel(${totalPages || 1})" ${page >= totalPages || total === 0 ? 'disabled' : ''}>末页</button>
+            <button class="btn-secondary" onclick="refreshMonitorPanel(1)" ${page === 1 || total === 0 ? 'disabled' : ''}>${escapeHtml(firstPageLabel)}</button>
+            <button class="btn-secondary" onclick="refreshMonitorPanel(${page - 1})" ${page === 1 || total === 0 ? 'disabled' : ''}>${escapeHtml(prevPageLabel)}</button>
+            <span class="pagination-page">${escapeHtml(pageInfoText)}</span>
+            <button class="btn-secondary" onclick="refreshMonitorPanel(${page + 1})" ${page >= totalPages || total === 0 ? 'disabled' : ''}>${escapeHtml(nextPageLabel)}</button>
+            <button class="btn-secondary" onclick="refreshMonitorPanel(${totalPages || 1})" ${page >= totalPages || total === 0 ? 'disabled' : ''}>${escapeHtml(lastPageLabel)}</button>
         </div>
     `;
     
@@ -1450,8 +1482,8 @@ async function deleteExecution(executionId) {
         return;
     }
     
-    // 确认删除
-    if (!confirm('确定要删除此执行记录吗？此操作不可恢复。')) {
+    const deleteConfirmMsg = typeof window.t === 'function' ? window.t('mcpMonitor.deleteExecConfirmSingle') : '确定要删除此执行记录吗？此操作不可恢复。';
+    if (!confirm(deleteConfirmMsg)) {
         return;
     }
     
@@ -1462,17 +1494,20 @@ async function deleteExecution(executionId) {
         
         if (!response.ok) {
             const error = await response.json().catch(() => ({}));
-            throw new Error(error.error || '删除执行记录失败');
+            const deleteFailedMsg = typeof window.t === 'function' ? window.t('mcpMonitor.deleteExecFailed') : '删除执行记录失败';
+            throw new Error(error.error || deleteFailedMsg);
         }
         
         // 删除成功后刷新当前页面
         const currentPage = monitorState.pagination.page;
         await refreshMonitorPanel(currentPage);
         
-        alert('执行记录已删除');
+        const execDeletedMsg = typeof window.t === 'function' ? window.t('mcpMonitor.execDeleted') : '执行记录已删除';
+        alert(execDeletedMsg);
     } catch (error) {
         console.error('删除执行记录失败:', error);
-        alert('删除执行记录失败: ' + error.message);
+        const deleteFailedMsg = typeof window.t === 'function' ? window.t('mcpMonitor.deleteExecFailed') : '删除执行记录失败';
+        alert(deleteFailedMsg + ': ' + error.message);
     }
 }
 
@@ -1488,7 +1523,7 @@ function updateBatchActionsState() {
             batchActions.style.display = 'flex';
         }
         if (selectedCountSpan) {
-            selectedCountSpan.textContent = `已选择 ${selectedCount} 项`;
+            selectedCountSpan.textContent = typeof window.t === 'function' ? window.t('mcp.selectedCount', { count: selectedCount }) : `已选择 ${selectedCount} 项`;
         }
     } else {
         if (batchActions) {
@@ -1547,15 +1582,15 @@ function deselectAllExecutions() {
 async function batchDeleteExecutions() {
     const checkboxes = document.querySelectorAll('.monitor-execution-checkbox:checked');
     if (checkboxes.length === 0) {
-        alert('请先选择要删除的执行记录');
+        const selectFirstMsg = typeof window.t === 'function' ? window.t('mcpMonitor.selectExecFirst') : '请先选择要删除的执行记录';
+        alert(selectFirstMsg);
         return;
     }
     
     const ids = Array.from(checkboxes).map(cb => cb.value);
     const count = ids.length;
-    
-    // 确认删除
-    if (!confirm(`确定要删除选中的 ${count} 条执行记录吗？此操作不可恢复。`)) {
+    const batchConfirmMsg = typeof window.t === 'function' ? window.t('mcpMonitor.batchDeleteConfirm', { count: count }) : `确定要删除选中的 ${count} 条执行记录吗？此操作不可恢复。`;
+    if (!confirm(batchConfirmMsg)) {
         return;
     }
     
@@ -1570,7 +1605,8 @@ async function batchDeleteExecutions() {
         
         if (!response.ok) {
             const error = await response.json().catch(() => ({}));
-            throw new Error(error.error || '批量删除执行记录失败');
+            const batchFailedMsg = typeof window.t === 'function' ? window.t('mcp.batchDeleteFailed') : '批量删除执行记录失败';
+            throw new Error(error.error || batchFailedMsg);
         }
         
         const result = await response.json().catch(() => ({}));
@@ -1580,33 +1616,42 @@ async function batchDeleteExecutions() {
         const currentPage = monitorState.pagination.page;
         await refreshMonitorPanel(currentPage);
         
-        alert(`成功删除 ${deletedCount} 条执行记录`);
+        const batchSuccessMsg = typeof window.t === 'function' ? window.t('mcpMonitor.batchDeleteSuccess', { count: deletedCount }) : `成功删除 ${deletedCount} 条执行记录`;
+        alert(batchSuccessMsg);
     } catch (error) {
         console.error('批量删除执行记录失败:', error);
-        alert('批量删除执行记录失败: ' + error.message);
+        const batchFailedMsg = typeof window.t === 'function' ? window.t('mcp.batchDeleteFailed') : '批量删除执行记录失败';
+        alert(batchFailedMsg + ': ' + error.message);
     }
 }
 
 function formatExecutionDuration(start, end) {
+    const unknownLabel = typeof window.t === 'function' ? window.t('mcpMonitor.unknown') : '未知';
     if (!start) {
-        return '未知';
+        return unknownLabel;
     }
     const startTime = new Date(start);
     const endTime = end ? new Date(end) : new Date();
     if (Number.isNaN(startTime.getTime()) || Number.isNaN(endTime.getTime())) {
-        return '未知';
+        return unknownLabel;
     }
     const diffMs = Math.max(0, endTime - startTime);
     const seconds = Math.floor(diffMs / 1000);
     if (seconds < 60) {
-        return `${seconds} 秒`;
+        return typeof window.t === 'function' ? window.t('mcpMonitor.durationSeconds', { n: seconds }) : seconds + ' 秒';
     }
     const minutes = Math.floor(seconds / 60);
     if (minutes < 60) {
         const remain = seconds % 60;
-        return remain > 0 ? `${minutes} 分 ${remain} 秒` : `${minutes} 分`;
+        if (remain > 0) {
+            return typeof window.t === 'function' ? window.t('mcpMonitor.durationMinutes', { minutes: minutes, seconds: remain }) : minutes + ' 分 ' + remain + ' 秒';
+        }
+        return typeof window.t === 'function' ? window.t('mcpMonitor.durationMinutesOnly', { minutes: minutes }) : minutes + ' 分';
     }
     const hours = Math.floor(minutes / 60);
     const remainMinutes = minutes % 60;
-    return remainMinutes > 0 ? `${hours} 小时 ${remainMinutes} 分` : `${hours} 小时`;
+    if (remainMinutes > 0) {
+        return typeof window.t === 'function' ? window.t('mcpMonitor.durationHours', { hours: hours, minutes: remainMinutes }) : hours + ' 小时 ' + remainMinutes + ' 分';
+    }
+    return typeof window.t === 'function' ? window.t('mcpMonitor.durationHoursOnly', { hours: hours }) : hours + ' 小时';
 }

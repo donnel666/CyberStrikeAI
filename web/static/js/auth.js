@@ -123,12 +123,20 @@ async function ensureAuthenticated() {
     return true;
 }
 
-function handleUnauthorized({ message = '认证已过期，请重新登录', silent = false } = {}) {
+function handleUnauthorized({ message = null, silent = false } = {}) {
     clearAuthStorage();
     authPromise = null;
     authPromiseResolvers = [];
+    let finalMessage = message;
+    if (!finalMessage) {
+        if (typeof window !== 'undefined' && typeof window.t === 'function') {
+            finalMessage = window.t('auth.sessionExpired');
+        } else {
+            finalMessage = '认证已过期，请重新登录';
+        }
+    }
     if (!silent) {
-        showLoginOverlay(message);
+        showLoginOverlay(finalMessage);
     } else {
         showLoginOverlay();
     }
@@ -147,7 +155,10 @@ async function apiFetch(url, options = {}) {
     const response = await fetch(url, opts);
     if (response.status === 401) {
         handleUnauthorized();
-        throw new Error('未授权访问');
+        const msg = (typeof window !== 'undefined' && typeof window.t === 'function')
+            ? window.t('auth.unauthorized')
+            : '未授权访问';
+        throw new Error(msg);
     }
     return response;
 }
@@ -165,7 +176,10 @@ async function submitLogin(event) {
     const password = passwordInput.value.trim();
     if (!password) {
         if (errorBox) {
-            errorBox.textContent = '请输入密码';
+            const msgEmpty = (typeof window !== 'undefined' && typeof window.t === 'function')
+                ? window.t('auth.enterPassword')
+                : '请输入密码';
+            errorBox.textContent = msgEmpty;
             errorBox.style.display = 'block';
         }
         return;
@@ -186,7 +200,10 @@ async function submitLogin(event) {
         const result = await response.json().catch(() => ({}));
         if (!response.ok || !result.token) {
             if (errorBox) {
-                errorBox.textContent = result.error || '登录失败，请检查密码';
+                const fallback = (typeof window !== 'undefined' && typeof window.t === 'function')
+                    ? window.t('auth.loginFailedCheck')
+                    : '登录失败，请检查密码';
+                errorBox.textContent = result.error || fallback;
                 errorBox.style.display = 'block';
             }
             return;
@@ -203,7 +220,10 @@ async function submitLogin(event) {
     } catch (error) {
         console.error('登录失败:', error);
         if (errorBox) {
-            errorBox.textContent = '登录失败，请稍后重试';
+            const fallback = (typeof window !== 'undefined' && typeof window.t === 'function')
+                ? window.t('auth.loginFailedRetry')
+                : '登录失败，请稍后重试';
+            errorBox.textContent = fallback;
             errorBox.style.display = 'block';
         }
     } finally {
@@ -375,7 +395,7 @@ async function logout() {
         // 无论如何都清除本地认证信息
         clearAuthStorage();
         hideLoginOverlay();
-        showLoginOverlay('已退出登录');
+        showLoginOverlay(typeof window.t === 'function' ? window.t('auth.loggedOut') : '已退出登录');
     }
 }
 

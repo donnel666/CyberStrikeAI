@@ -108,11 +108,13 @@ function updateRoleSelectorDisplay() {
             }
         }
         roleSelectorIcon.textContent = icon;
-        roleSelectorText.textContent = selectedRole.name || '默认';
+        const displayName = (selectedRole.name === '默认' || !selectedRole.name) && typeof window.t === 'function'
+            ? window.t('chat.defaultRole') : (selectedRole.name || (typeof window.t === 'function' ? window.t('chat.defaultRole') : '默认'));
+        roleSelectorText.textContent = displayName;
     } else {
         // 默认角色
         roleSelectorIcon.textContent = '🔵';
-        roleSelectorText.textContent = '默认';
+        roleSelectorText.textContent = typeof window.t === 'function' ? window.t('chat.defaultRole') : '默认';
     }
 }
 

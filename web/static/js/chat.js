@@ -44,10 +44,15 @@ function saveChatDraftDebounced(content) {
 // 保存输入框草稿到localStorage
 function saveChatDraft(content) {
     try {
-        if (content && content.trim().length > 0) {
+        const chatInput = document.getElementById('chat-input');
+        const placeholderText = chatInput ? (chatInput.getAttribute('placeholder') || '').trim() : '';
+        const trimmed = (content || '').trim();
+
+        // 不要把占位提示本身当作草稿保存
+        if (trimmed && (!placeholderText || trimmed !== placeholderText)) {
             localStorage.setItem(DRAFT_STORAGE_KEY, content);
         } else {
-            // 如果内容为空，清除保存的草稿
+            // 如果内容为空或等于占位提示，清除保存的草稿
             localStorage.removeItem(DRAFT_STORAGE_KEY);
         }
     } catch (error) {
@@ -63,17 +68,27 @@ function restoreChatDraft() {
         if (!chatInput) {
             return;
         }
-        
+        const placeholderText = (chatInput.getAttribute('placeholder') || '').trim();
+        // 若当前 value 与 placeholder 相同，说明提示被误当作内容，清空以便正确显示占位符
+        if (placeholderText && chatInput.value.trim() === placeholderText) {
+            chatInput.value = '';
+        }
         // 如果输入框已有内容，不恢复草稿（避免覆盖用户输入）
         if (chatInput.value && chatInput.value.trim().length > 0) {
             return;
         }
         
         const draft = localStorage.getItem(DRAFT_STORAGE_KEY);
-        if (draft && draft.trim().length > 0) {
+        const trimmedDraft = draft ? draft.trim() : '';
+
+        // 如果草稿内容和占位提示一样，则认为是无效草稿，不恢复
+        if (trimmedDraft && (!placeholderText || trimmedDraft !== placeholderText)) {
             chatInput.value = draft;
             // 调整输入框高度以适应内容
             adjustTextareaHeight(chatInput);
+        } else if (trimmedDraft && placeholderText && trimmedDraft === placeholderText) {
+            // 清理掉无效草稿，避免之后继续干扰
+            localStorage.removeItem(DRAFT_STORAGE_KEY);
         }
     } catch (error) {
         console.warn('恢复草稿失败:', error);
@@ -263,7 +278,7 @@ function renderChatFileChips() {
         const remove = document.createElement('button');
         remove.type = 'button';
         remove.className = 'chat-file-chip-remove';
-        remove.title = '移除';
+        remove.title = typeof window.t === 'function' ? window.t('chatGroup.remove') : '移除';
         remove.innerHTML = '×';
         remove.setAttribute('aria-label', '移除 ' + a.fileName);
         remove.addEventListener('click', () => removeChatAttachment(i));
@@ -720,14 +735,14 @@ function renderMentionSuggestions({ showLoading = false } = {}) {
     const previousScrollTop = canPreserveScroll ? existingList.scrollTop : 0;
 
     if (showLoading) {
-        mentionSuggestionsEl.innerHTML = '<div class="mention-empty">正在加载工具...</div>';
+        mentionSuggestionsEl.innerHTML = '<div class="mention-empty">' + (typeof window.t === 'function' ? window.t('chat.loadingTools') : '正在加载工具...') + '</div>';
         mentionSuggestionsEl.style.display = 'block';
         delete mentionSuggestionsEl.dataset.lastMentionQuery;
         return;
     }
 
     if (!mentionFilteredTools.length) {
-        mentionSuggestionsEl.innerHTML = '<div class="mention-empty">没有匹配的工具</div>';
+        mentionSuggestionsEl.innerHTML = '<div class="mention-empty">' + (typeof window.t === 'function' ? window.t('chat.noMatchTools') : '没有匹配的工具') + '</div>';
         mentionSuggestionsEl.style.display = 'block';
         mentionSuggestionsEl.dataset.lastMentionQuery = currentQuery;
         return;
@@ -937,7 +952,8 @@ function initializeChatUI() {
 
     const messagesDiv = document.getElementById('chat-messages');
     if (messagesDiv && messagesDiv.childElementCount === 0) {
-        addMessage('assistant', '系统已就绪。请输入您的测试需求，系统将自动执行相应的安全测试。');
+        const readyMsg = typeof window.t === 'function' ? window.t('chat.systemReadyMessage') : '系统已就绪。请输入您的测试需求，系统将自动执行相应的安全测试。';
+        addMessage('assistant', readyMsg);
     }
 
     addAttackChainButton(currentConversationId);
@@ -1040,12 +1056,23 @@ function addMessage(role, content, mcpExecutionIds = null, progressId = null, cr
         }
     };
     
+    // 助手消息中的已知中文错误前缀做国际化替换（后端固定返回中文）
+    let displayContent = content;
+    if (role === 'assistant' && typeof displayContent === 'string' && typeof window.t === 'function') {
+        if (displayContent.indexOf('执行失败: ') === 0) {
+            displayContent = window.t('chat.executeFailed') + ': ' + displayContent.slice('执行失败: '.length);
+        }
+        if (displayContent.indexOf('调用OpenAI失败:') !== -1) {
+            displayContent = displayContent.replace(/调用OpenAI失败:/g, window.t('chat.callOpenAIFailed') + ':');
+        }
+    }
+
     // 对于用户消息，直接转义HTML，不进行Markdown解析，以保留所有特殊字符
     if (role === 'user') {
         formattedContent = escapeHtml(content).replace(/\n/g, '<br>');
     } else if (typeof DOMPurify !== 'undefined') {
         // 直接解析Markdown（代码块会被包裹在<code>/<pre>中，DOMPurify会保留其文本内容）
-        let parsedContent = parseMarkdown(content);
+        let parsedContent = parseMarkdown(role === 'assistant' ? displayContent : content);
         if (!parsedContent) {
             parsedContent = content;
         }
@@ -1087,14 +1114,16 @@ function addMessage(role, content, mcpExecutionIds = null, progressId = null, cr
         
         formattedContent = DOMPurify.sanitize(parsedContent, defaultSanitizeConfig);
     } else if (typeof marked !== 'undefined') {
-        const parsedContent = parseMarkdown(content);
+        const rawForParse = role === 'assistant' ? displayContent : content;
+        const parsedContent = parseMarkdown(rawForParse);
         if (parsedContent) {
             formattedContent = parsedContent;
         } else {
-            formattedContent = escapeHtml(content).replace(/\n/g, '<br>');
+            formattedContent = escapeHtml(rawForParse).replace(/\n/g, '<br>');
         }
     } else {
-        formattedContent = escapeHtml(content).replace(/\n/g, '<br>');
+        const rawForEscape = role === 'assistant' ? displayContent : content;
+        formattedContent = escapeHtml(rawForEscape).replace(/\n/g, '<br>');
     }
     
     bubble.innerHTML = formattedContent;
@@ -1129,8 +1158,8 @@ function addMessage(role, content, mcpExecutionIds = null, progressId = null, cr
     if (role === 'assistant') {
         const copyBtn = document.createElement('button');
         copyBtn.className = 'message-copy-btn';
-        copyBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg><span>复制</span>';
-        copyBtn.title = '复制消息内容';
+        copyBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg><span>' + (typeof window.t === 'function' ? window.t('common.copy') : '复制') + '</span>';
+        copyBtn.title = typeof window.t === 'function' ? window.t('chat.copyMessageTitle') : '复制消息内容';
         copyBtn.onclick = function(e) {
             e.stopPropagation();
             copyMessageToClipboard(messageDiv, this);
@@ -1169,7 +1198,7 @@ function addMessage(role, content, mcpExecutionIds = null, progressId = null, cr
         
         const mcpLabel = document.createElement('div');
         mcpLabel.className = 'mcp-call-label';
-        mcpLabel.textContent = '📋 渗透测试详情';
+        mcpLabel.textContent = '📋 ' + (typeof window.t === 'function' ? window.t('chat.penetrationTestDetail') : '渗透测试详情');
         mcpSection.appendChild(mcpLabel);
         
         const buttonsContainer = document.createElement('div');
@@ -1192,7 +1221,7 @@ function addMessage(role, content, mcpExecutionIds = null, progressId = null, cr
         if (progressId) {
             const progressDetailBtn = document.createElement('button');
             progressDetailBtn.className = 'mcp-detail-btn process-detail-btn';
-            progressDetailBtn.innerHTML = '<span>展开详情</span>';
+            progressDetailBtn.innerHTML = '<span>' + (typeof window.t === 'function' ? window.t('chat.expandDetail') : '展开详情') + '</span>';
             progressDetailBtn.onclick = () => toggleProcessDetails(progressId, messageDiv.id);
             buttonsContainer.appendChild(progressDetailBtn);
             // 存储进度ID到消息元素
@@ -1259,7 +1288,7 @@ function copyMessageToClipboard(messageDiv, button) {
 function showCopySuccess(button) {
     if (button) {
         const originalText = button.innerHTML;
-        button.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg><span>已复制</span>';
+        button.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg><span>' + (typeof window.t === 'function' ? window.t('common.copied') : '已复制') + '</span>';
         button.style.color = '#10b981';
         button.style.background = 'rgba(16, 185, 129, 0.1)';
         button.style.borderColor = 'rgba(16, 185, 129, 0.3)';
@@ -1301,11 +1330,11 @@ function renderProcessDetails(messageId, processDetails) {
     if (!mcpLabel && !buttonsContainer) {
         mcpLabel = document.createElement('div');
         mcpLabel.className = 'mcp-call-label';
-        mcpLabel.textContent = '📋 渗透测试详情';
+        mcpLabel.textContent = '📋 ' + (typeof window.t === 'function' ? window.t('chat.penetrationTestDetail') : '渗透测试详情');
         mcpSection.appendChild(mcpLabel);
-    } else if (mcpLabel && mcpLabel.textContent !== '📋 渗透测试详情') {
+    } else if (mcpLabel && mcpLabel.textContent !== ('📋 ' + (typeof window.t === 'function' ? window.t('chat.penetrationTestDetail') : '渗透测试详情'))) {
         // 如果标签存在但不是统一格式，更新它
-        mcpLabel.textContent = '📋 渗透测试详情';
+        mcpLabel.textContent = '📋 ' + (typeof window.t === 'function' ? window.t('chat.penetrationTestDetail') : '渗透测试详情');
     }
     
     // 如果没有按钮容器，创建一个
@@ -1320,7 +1349,7 @@ function renderProcessDetails(messageId, processDetails) {
     if (!processDetailBtn) {
         processDetailBtn = document.createElement('button');
         processDetailBtn.className = 'mcp-detail-btn process-detail-btn';
-        processDetailBtn.innerHTML = '<span>展开详情</span>';
+        processDetailBtn.innerHTML = '<span>' + (typeof window.t === 'function' ? window.t('chat.expandDetail') : '展开详情') + '</span>';
         processDetailBtn.onclick = () => toggleProcessDetails(null, messageId);
         buttonsContainer.appendChild(processDetailBtn);
     }
@@ -1360,7 +1389,7 @@ function renderProcessDetails(messageId, processDetails) {
     // 如果没有processDetails或为空，显示空状态
     if (!processDetails || processDetails.length === 0) {
         // 显示空状态提示
-        timeline.innerHTML = '<div class="progress-timeline-empty">暂无过程详情（可能执行过快或未触发详细事件）</div>';
+        timeline.innerHTML = '<div class="progress-timeline-empty">' + (typeof window.t === 'function' ? window.t('chat.noProcessDetail') : '暂无过程详情（可能执行过快或未触发详细事件）') + '</div>';
         // 默认折叠
         timeline.classList.remove('expanded');
         return;
@@ -1425,7 +1454,7 @@ function renderProcessDetails(messageId, processDetails) {
         // 更新按钮文本为"展开详情"
         const processDetailBtn = messageElement.querySelector('.process-detail-btn');
         if (processDetailBtn) {
-            processDetailBtn.innerHTML = '<span>展开详情</span>';
+            processDetailBtn.innerHTML = '<span>' + (typeof window.t === 'function' ? window.t('chat.expandDetail') : '展开详情') + '</span>';
         }
     }
 }
@@ -1679,7 +1708,8 @@ async function startNewConversation() {
     currentConversationId = null;
     currentConversationGroupId = null; // 新对话不属于任何分组
     document.getElementById('chat-messages').innerHTML = '';
-    addMessage('assistant', '系统已就绪。请输入您的测试需求，系统将自动执行相应的安全测试。');
+    const readyMsgNew = typeof window.t === 'function' ? window.t('chat.systemReadyMessage') : '系统已就绪。请输入您的测试需求，系统将自动执行相应的安全测试。';
+    addMessage('assistant', readyMsgNew);
     addAttackChainButton(null);
     updateActiveConversation();
     // 刷新分组列表，清除分组高亮
@@ -2087,7 +2117,8 @@ async function loadConversation(conversationId) {
                 }
             });
         } else {
-            addMessage('assistant', '系统已就绪。请输入您的测试需求，系统将自动执行相应的安全测试。');
+            const readyMsgEmpty = typeof window.t === 'function' ? window.t('chat.systemReadyMessage') : '系统已就绪。请输入您的测试需求，系统将自动执行相应的安全测试。';
+            addMessage('assistant', readyMsgEmpty);
         }
         
         // 滚动到底部
@@ -2127,7 +2158,8 @@ async function deleteConversation(conversationId, skipConfirm = false) {
         if (conversationId === currentConversationId) {
             currentConversationId = null;
             document.getElementById('chat-messages').innerHTML = '';
-            addMessage('assistant', '系统已就绪。请输入您的测试需求，系统将自动执行相应的安全测试。');
+            const readyMsgLoad = typeof window.t === 'function' ? window.t('chat.systemReadyMessage') : '系统已就绪。请输入您的测试需求，系统将自动执行相应的安全测试。';
+            addMessage('assistant', readyMsgLoad);
             addAttackChainButton(null);
         }
         
@@ -4171,13 +4203,13 @@ async function showConversationContextMenu(event) {
                 attackChainMenuItem.style.opacity = '1';
                 attackChainMenuItem.style.cursor = 'pointer';
                 attackChainMenuItem.onclick = showAttackChainFromContext;
-                attackChainMenuItem.title = '查看当前对话的攻击链';
+                attackChainMenuItem.title = (typeof window.t === 'function' ? window.t('chat.viewAttackChainCurrentConv') : '查看当前对话的攻击链');
             }
         } else {
             attackChainMenuItem.style.opacity = '0.5';
             attackChainMenuItem.style.cursor = 'not-allowed';
             attackChainMenuItem.onclick = null;
-            attackChainMenuItem.title = '请选择一个对话以查看攻击链';
+            attackChainMenuItem.title = (typeof window.t === 'function' ? window.t('chat.viewAttackChainSelectConv') : '请选择一个对话以查看攻击链');
         }
     }
     
@@ -4210,21 +4242,25 @@ async function showConversationContextMenu(event) {
             
             // 更新菜单文本
             const pinMenuText = document.getElementById('pin-conversation-menu-text');
-            if (pinMenuText) {
+            if (pinMenuText && typeof window.t === 'function') {
+                pinMenuText.textContent = isPinned ? window.t('contextMenu.unpinConversation') : window.t('contextMenu.pinConversation');
+            } else if (pinMenuText) {
                 pinMenuText.textContent = isPinned ? '取消置顶' : '置顶此对话';
             }
         } catch (error) {
             console.error('获取对话置顶状态失败:', error);
-            // 如果获取失败，使用默认文本
             const pinMenuText = document.getElementById('pin-conversation-menu-text');
-            if (pinMenuText) {
+            if (pinMenuText && typeof window.t === 'function') {
+                pinMenuText.textContent = window.t('contextMenu.pinConversation');
+            } else if (pinMenuText) {
                 pinMenuText.textContent = '置顶此对话';
             }
         }
     } else {
-        // 如果没有对话ID，使用默认文本
         const pinMenuText = document.getElementById('pin-conversation-menu-text');
-        if (pinMenuText) {
+        if (pinMenuText && typeof window.t === 'function') {
+            pinMenuText.textContent = window.t('contextMenu.pinConversation');
+        } else if (pinMenuText) {
             pinMenuText.textContent = '置顶此对话';
         }
     }
@@ -4333,14 +4369,17 @@ async function showGroupContextMenu(event, groupId) {
         
         // 更新菜单文本
         const pinMenuText = document.getElementById('pin-group-menu-text');
-        if (pinMenuText) {
+        if (pinMenuText && typeof window.t === 'function') {
+            pinMenuText.textContent = isPinned ? window.t('contextMenu.unpinGroup') : window.t('contextMenu.pinGroup');
+        } else if (pinMenuText) {
             pinMenuText.textContent = isPinned ? '取消置顶' : '置顶此分组';
         }
     } catch (error) {
         console.error('获取分组置顶状态失败:', error);
-        // 如果获取失败，使用默认文本
         const pinMenuText = document.getElementById('pin-group-menu-text');
-        if (pinMenuText) {
+        if (pinMenuText && typeof window.t === 'function') {
+            pinMenuText.textContent = window.t('contextMenu.pinGroup');
+        } else if (pinMenuText) {
             pinMenuText.textContent = '置顶此分组';
         }
     }
@@ -4443,7 +4482,9 @@ async function renameConversation() {
         loadConversationsWithGroups();
     } catch (error) {
         console.error('重命名对话失败:', error);
-        alert('重命名失败: ' + (error.message || '未知错误'));
+        const failedLabel = typeof window.t === 'function' ? window.t('chat.renameFailed') : '重命名失败';
+        const unknownErr = typeof window.t === 'function' ? window.t('createGroupModal.unknownError') : '未知错误';
+        alert(failedLabel + ': ' + (error.message || unknownErr));
     }
 
     closeContextMenu();
@@ -4636,13 +4677,14 @@ async function showMoveToGroupSubmenu() {
     }
 
     // 始终显示"创建分组"选项
+    const addGroupLabel = typeof window.t === 'function' ? window.t('chat.addNewGroup') : '+ 新增分组';
     const addItem = document.createElement('div');
     addItem.className = 'context-submenu-item add-group-item';
     addItem.innerHTML = `
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
-        <span>+ 新增分组</span>
+        <span>${addGroupLabel}</span>
     `;
     addItem.onclick = () => {
         showCreateGroupModal(true);
@@ -4917,7 +4959,8 @@ function deleteConversationFromContext() {
     const convId = contextMenuConversationId;
     if (!convId) return;
 
-    if (confirm('确定要删除此对话吗？')) {
+    const confirmMsg = typeof window.t === 'function' ? window.t('chat.deleteConversationConfirm') : '确定要删除此对话吗？';
+    if (confirm(confirmMsg)) {
         deleteConversation(convId, true); // 跳过内部确认，因为这里已经确认过了
     }
     closeContextMenu();
@@ -4944,6 +4987,15 @@ function closeContextMenu() {
 // 显示批量管理模态框
 let allConversationsForBatch = [];
 
+// 更新批量管理模态框标题（含条数），支持 i18n；count 为当前条数
+function updateBatchManageTitle(count) {
+    const titleEl = document.getElementById('batch-manage-title');
+    if (!titleEl || typeof window.t !== 'function') return;
+    const template = window.t('batchManageModal.title', { count: '__C__' });
+    const parts = template.split('__C__');
+    titleEl.innerHTML = (parts[0] || '') + '<span id="batch-manage-count">' + (count || 0) + '</span>' + (parts[1] || '');
+}
+
 async function showBatchManageModal() {
     try {
         const response = await apiFetch('/api/conversations?limit=1000');
@@ -4957,10 +5009,7 @@ async function showBatchManageModal() {
         }
 
         const modal = document.getElementById('batch-manage-modal');
-        const countEl = document.getElementById('batch-manage-count');
-        if (countEl) {
-            countEl.textContent = allConversationsForBatch.length;
-        }
+        updateBatchManageTitle(allConversationsForBatch.length);
 
         renderBatchConversations();
         if (modal) {
@@ -4971,10 +5020,7 @@ async function showBatchManageModal() {
         // 错误时使用空数组，不显示错误提示（更友好的用户体验）
         allConversationsForBatch = [];
         const modal = document.getElementById('batch-manage-modal');
-        const countEl = document.getElementById('batch-manage-count');
-        if (countEl) {
-            countEl.textContent = 0;
-        }
+        updateBatchManageTitle(0);
         if (modal) {
             renderBatchConversations();
             modal.style.display = 'flex';
@@ -5041,7 +5087,7 @@ function renderBatchConversations(filtered = null) {
 
         const name = document.createElement('div');
         name.className = 'batch-table-col-name';
-        const originalTitle = conv.title || '未命名对话';
+        const originalTitle = conv.title || (typeof window.t === 'function' ? window.t('batchManageModal.unnamedConversation') : '未命名对话');
         // 使用安全截断函数，限制最大长度为45个字符（留出空间显示省略号）
         const truncatedTitle = safeTruncateText(originalTitle, 45);
         name.textContent = truncatedTitle;
@@ -5051,7 +5097,8 @@ function renderBatchConversations(filtered = null) {
         const time = document.createElement('div');
         time.className = 'batch-table-col-time';
         const dateObj = conv.updatedAt ? new Date(conv.updatedAt) : new Date();
-        time.textContent = dateObj.toLocaleString('zh-CN', {
+        const locale = (typeof i18next !== 'undefined' && i18next.language) ? i18next.language : 'zh-CN';
+        time.textContent = dateObj.toLocaleString(locale, {
             year: 'numeric',
             month: '2-digit',
             day: '2-digit',
@@ -5105,11 +5152,12 @@ function toggleSelectAllBatch() {
 async function deleteSelectedConversations() {
     const checkboxes = document.querySelectorAll('.batch-conversation-checkbox:checked');
     if (checkboxes.length === 0) {
-        alert('请先选择要删除的对话');
+        alert(typeof window.t === 'function' ? window.t('batchManageModal.confirmDeleteNone') : '请先选择要删除的对话');
         return;
     }
 
-    if (!confirm(`确定要删除选中的 ${checkboxes.length} 条对话吗？`)) {
+    const confirmMsg = typeof window.t === 'function' ? window.t('batchManageModal.confirmDeleteN', { count: checkboxes.length }) : '确定要删除选中的 ' + checkboxes.length + ' 条对话吗？';
+    if (!confirm(confirmMsg)) {
         return;
     }
 
@@ -5123,7 +5171,9 @@ async function deleteSelectedConversations() {
         loadConversationsWithGroups();
     } catch (error) {
         console.error('删除失败:', error);
-        alert('删除失败: ' + (error.message || '未知错误'));
+        const failedMsg = typeof window.t === 'function' ? window.t('batchManageModal.deleteFailed') : '删除失败';
+        const unknownErr = typeof window.t === 'function' ? window.t('createGroupModal.unknownError') : '未知错误';
+        alert(failedMsg + ': ' + (error.message || unknownErr));
     }
 }
 
@@ -5139,6 +5189,14 @@ function closeBatchManageModal() {
     }
     allConversationsForBatch = [];
 }
+
+// 语言切换时刷新批量管理模态框标题（若当前正在显示）
+document.addEventListener('languagechange', function () {
+    const modal = document.getElementById('batch-manage-modal');
+    if (modal && modal.style.display === 'flex') {
+        updateBatchManageTitle(allConversationsForBatch.length);
+    }
+});
 
 // 显示创建分组模态框
 function showCreateGroupModal(andMoveConversation = false) {
@@ -5204,6 +5262,15 @@ function selectSuggestion(name) {
     const input = document.getElementById('create-group-name-input');
     if (input) {
         input.value = name;
+        input.focus();
+    }
+}
+
+// 按 i18n key 选择建议标签（用于国际化下填充当前语言的文案）
+function selectSuggestionByKey(i18nKey) {
+    const input = document.getElementById('create-group-name-input');
+    if (input && typeof window.t === 'function') {
+        input.value = window.t(i18nKey);
         input.focus();
     }
 }
@@ -5299,7 +5366,7 @@ async function createGroup(event) {
 
     const name = input.value.trim();
     if (!name) {
-        alert('请输入分组名称');
+        alert(typeof window.t === 'function' ? window.t('createGroupModal.groupNamePlaceholder') : '请输入分组名称');
         return;
     }
 
@@ -5320,7 +5387,7 @@ async function createGroup(event) {
         
         const nameExists = groups.some(g => g.name === name);
         if (nameExists) {
-            alert('分组名称已存在，请使用其他名称');
+            alert(typeof window.t === 'function' ? window.t('createGroupModal.nameExists') : '分组名称已存在，请使用其他名称');
             return;
         }
     } catch (error) {
@@ -5345,11 +5412,13 @@ async function createGroup(event) {
 
         if (!response.ok) {
             const error = await response.json();
+            const nameExistsMsg = typeof window.t === 'function' ? window.t('createGroupModal.nameExists') : '分组名称已存在，请使用其他名称';
             if (error.error && error.error.includes('已存在')) {
-                alert('分组名称已存在，请使用其他名称');
+                alert(nameExistsMsg);
                 return;
             }
-            throw new Error(error.error || '创建失败');
+            const createFailedMsg = typeof window.t === 'function' ? window.t('createGroupModal.createFailed') : '创建失败';
+            throw new Error(error.error || createFailedMsg);
         }
 
         const newGroup = await response.json();
@@ -5375,7 +5444,9 @@ async function createGroup(event) {
         }
     } catch (error) {
         console.error('创建分组失败:', error);
-        alert('创建失败: ' + (error.message || '未知错误'));
+        const createFailedMsg = typeof window.t === 'function' ? window.t('createGroupModal.createFailed') : '创建失败';
+        const unknownErr = typeof window.t === 'function' ? window.t('createGroupModal.unknownError') : '未知错误';
+        alert(createFailedMsg + ': ' + (error.message || unknownErr));
     }
 }
 
@@ -5517,10 +5588,12 @@ async function loadGroupConversations(groupId, searchQuery = '') {
         list.innerHTML = '';
 
         if (groupConvs.length === 0) {
+            const emptyMsg = typeof window.t === 'function' ? window.t('chat.emptyGroupConversations') : '该分组暂无对话';
+            const noMatchMsg = typeof window.t === 'function' ? window.t('chat.noMatchingConversationsInGroup') : '未找到匹配的对话';
             if (searchQuery && searchQuery.trim()) {
-                list.innerHTML = '<div style="padding: 40px; text-align: center; color: var(--text-muted);">未找到匹配的对话</div>';
+                list.innerHTML = '<div style="padding: 40px; text-align: center; color: var(--text-muted);">' + (noMatchMsg || '未找到匹配的对话') + '</div>';
             } else {
-                list.innerHTML = '<div style="padding: 40px; text-align: center; color: var(--text-muted);">该分组暂无对话</div>';
+                list.innerHTML = '<div style="padding: 40px; text-align: center; color: var(--text-muted);">' + (emptyMsg || '该分组暂无对话') + '</div>';
             }
             return;
         }
@@ -5651,7 +5724,8 @@ async function editGroup() {
         const group = await response.json();
         if (!group) return;
 
-        const newName = prompt('请输入新名称:', group.name);
+        const renamePrompt = typeof window.t === 'function' ? window.t('chat.renameGroupPrompt') : '请输入新名称：';
+        const newName = prompt(renamePrompt, group.name);
         if (newName === null || !newName.trim()) return;
 
         const trimmedName = newName.trim();
@@ -5672,7 +5746,7 @@ async function editGroup() {
         
         const nameExists = groups.some(g => g.name === trimmedName && g.id !== currentGroupId);
         if (nameExists) {
-            alert('分组名称已存在，请使用其他名称');
+            alert(typeof window.t === 'function' ? window.t('createGroupModal.nameExists') : '分组名称已存在，请使用其他名称');
             return;
         }
 
@@ -5712,7 +5786,8 @@ async function editGroup() {
 async function deleteGroup() {
     if (!currentGroupId) return;
 
-    if (!confirm('确定要删除此分组吗？分组中的对话不会被删除，但会从分组中移除。')) {
+    const deleteConfirmMsg = typeof window.t === 'function' ? window.t('chat.deleteGroupConfirm') : '确定要删除此分组吗？分组中的对话不会被删除，但会从分组中移除。';
+    if (!confirm(deleteConfirmMsg)) {
         return;
     }
 
@@ -5758,7 +5833,8 @@ async function renameGroupFromContext() {
         const group = await response.json();
         if (!group) return;
 
-        const newName = prompt('请输入新名称:', group.name);
+        const renamePrompt = typeof window.t === 'function' ? window.t('chat.renameGroupPrompt') : '请输入新名称：';
+        const newName = prompt(renamePrompt, group.name);
         if (newName === null || !newName.trim()) {
             closeGroupContextMenu();
             return;
@@ -5782,7 +5858,7 @@ async function renameGroupFromContext() {
         
         const nameExists = groups.some(g => g.name === trimmedName && g.id !== groupId);
         if (nameExists) {
-            alert('分组名称已存在，请使用其他名称');
+            alert(typeof window.t === 'function' ? window.t('createGroupModal.nameExists') : '分组名称已存在，请使用其他名称');
             return;
         }
 
@@ -5817,7 +5893,9 @@ async function renameGroupFromContext() {
         }
     } catch (error) {
         console.error('重命名分组失败:', error);
-        alert('重命名失败: ' + (error.message || '未知错误'));
+        const failedLabel = typeof window.t === 'function' ? window.t('chat.renameFailed') : '重命名失败';
+        const unknownErr = typeof window.t === 'function' ? window.t('createGroupModal.unknownError') : '未知错误';
+        alert(failedLabel + ': ' + (error.message || unknownErr));
     }
 
     closeGroupContextMenu();
@@ -5867,7 +5945,8 @@ async function deleteGroupFromContext() {
     const groupId = contextMenuGroupId;
     if (!groupId) return;
 
-    if (!confirm('确定要删除此分组吗？分组中的对话不会被删除，但会从分组中移除。')) {
+    const deleteConfirmMsg = typeof window.t === 'function' ? window.t('chat.deleteGroupConfirm') : '确定要删除此分组吗？分组中的对话不会被删除，但会从分组中移除。';
+    if (!confirm(deleteConfirmMsg)) {
         closeGroupContextMenu();
         return;
     }
