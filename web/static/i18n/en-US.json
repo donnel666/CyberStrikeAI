@@ -1029,7 +1029,7 @@
     "description": "Run commands on the server for ops and debugging. Commands run on the server; avoid sensitive or destructive operations.",
     "terminalTab": "Terminal {{n}}",
     "close": "Close",
-    "newTerminal": "New terminal"
+    "newTerminal": "+"
   },
   "settingsSecurity": {
     "changePasswordTitle": "Change password",
