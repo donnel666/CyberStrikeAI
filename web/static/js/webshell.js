@@ -132,6 +132,7 @@ function wsT(key) {
         'webshell.dbDeleteProfile': '删除连接',
         'webshell.dbDeleteProfileConfirm': '确定删除该数据库连接配置吗？',
         'webshell.dbProfileNamePrompt': '请输入连接名称',
+        'webshell.dbProfileName': '连接名称',
         'webshell.dbProfiles': '数据库连接',
         'webshell.aiSystemReadyMessage': '系统已就绪。请输入您的测试需求，系统将自动执行相应的安全测试。',
         'webshell.aiPlaceholder': '例如：列出当前目录下的文件',
@@ -864,14 +865,17 @@ function webshellDbGetFieldValue(id) {
 }
 
 function webshellDbCollectConfig(conn) {
+    var curr = getWebshellDbConfig(conn) || {};
+    var nameVal = webshellDbGetFieldValue('webshell-db-profile-name');
     var cfg = {
+        name: nameVal || curr.name || 'DB-1',
         type: webshellDbGetFieldValue('webshell-db-type') || 'mysql',
         host: webshellDbGetFieldValue('webshell-db-host') || '127.0.0.1',
         port: webshellDbGetFieldValue('webshell-db-port') || '',
         username: webshellDbGetFieldValue('webshell-db-user') || '',
         password: (document.getElementById('webshell-db-pass') || {}).value || '',
         database: webshellDbGetFieldValue('webshell-db-name') || '',
-        selectedDatabase: getWebshellDbConfig(conn).selectedDatabase || '',
+        selectedDatabase: curr.selectedDatabase || '',
         sqlitePath: webshellDbGetFieldValue('webshell-db-sqlite-path') || '/tmp/test.db',
         sql: (document.getElementById('webshell-db-sql') || {}).value || ''
     };
@@ -1574,7 +1578,19 @@ function selectWebshell(id, stateReady) {
         '<div class="webshell-db-sidebar-hint">' + (wsT('webshell.dbSelectTableHint') || '点击表名可生成查询 SQL') + '</div>' +
         '</aside>' +
         '<section class="webshell-db-main">' +
+        '<div class="webshell-db-sql-tools"><button type="button" class="btn-ghost btn-sm" id="webshell-db-template-btn">' + (wsT('webshell.dbTemplateSql') || '示例 SQL') + '</button><button type="button" class="btn-ghost btn-sm" id="webshell-db-clear-btn">' + (wsT('webshell.dbClearSql') || '清空 SQL') + '</button></div>' +
+        '<textarea id="webshell-db-sql" class="webshell-db-sql form-control" rows="8" placeholder="' + (wsT('webshell.dbSqlPlaceholder') || '输入 SQL，例如：SELECT version();') + '"></textarea>' +
+        '<div class="webshell-db-actions">' +
+        '<button type="button" class="btn-ghost" id="webshell-db-test-btn">' + (wsT('webshell.dbTest') || '测试连接') + '</button>' +
+        '<button type="button" class="btn-primary" id="webshell-db-run-btn">' + (wsT('webshell.dbRunSql') || '执行 SQL') + '</button>' +
+        '</div>' +
+        '<div class="webshell-db-output-wrap"><div class="webshell-db-output-title">' + (wsT('webshell.dbOutput') || '执行输出') + '</div><div id="webshell-db-result-table" class="webshell-db-result-table"></div><pre id="webshell-db-output" class="webshell-db-output"></pre><div class="webshell-db-hint">' + (wsT('webshell.dbCliHint') || '如果提示命令不存在，请先在目标主机安装对应客户端（mysql/psql/sqlite3/sqlcmd）') + '</div></div>' +
+        '<div id="webshell-db-profile-modal" class="modal">' +
+        '<div class="modal-content webshell-db-profile-modal-content">' +
+        '<div class="modal-header"><h2 id="webshell-db-profile-modal-title">' + (wsT('webshell.editConnectionTitle') || '编辑连接') + '</h2><span class="modal-close" id="webshell-db-profile-modal-close">&times;</span></div>' +
+        '<div class="modal-body">' +
         '<div class="webshell-db-toolbar">' +
+        '<label><span>' + (wsT('webshell.dbProfileName') || '连接名称') + '</span><input id="webshell-db-profile-name" class="form-control" type="text" maxlength="30" /></label>' +
         '<label><span>' + (wsT('webshell.dbType') || '数据库类型') + '</span><select id="webshell-db-type" class="form-control"><option value="mysql">MySQL</option><option value="pgsql">PostgreSQL</option><option value="sqlite">SQLite</option><option value="mssql">SQL Server</option></select></label>' +
         '<label class="webshell-db-common-field"><span>' + (wsT('webshell.dbHost') || '主机') + '</span><input id="webshell-db-host" class="form-control" type="text" value="127.0.0.1" /></label>' +
         '<label class="webshell-db-common-field"><span>' + (wsT('webshell.dbPort') || '端口') + '</span><input id="webshell-db-port" class="form-control" type="text" /></label>' +
@@ -1583,13 +1599,10 @@ function selectWebshell(id, stateReady) {
         '<label class="webshell-db-common-field"><span>' + (wsT('webshell.dbName') || '数据库名') + '</span><input id="webshell-db-name" class="form-control" type="text" /></label>' +
         '<label id="webshell-db-sqlite-row"><span>' + (wsT('webshell.dbSqlitePath') || 'SQLite 文件路径') + '</span><input id="webshell-db-sqlite-path" class="form-control" type="text" value="/tmp/test.db" /></label>' +
         '</div>' +
-        '<div class="webshell-db-sql-tools"><button type="button" class="btn-ghost btn-sm" id="webshell-db-template-btn">' + (wsT('webshell.dbTemplateSql') || '示例 SQL') + '</button><button type="button" class="btn-ghost btn-sm" id="webshell-db-clear-btn">' + (wsT('webshell.dbClearSql') || '清空 SQL') + '</button></div>' +
-        '<textarea id="webshell-db-sql" class="webshell-db-sql form-control" rows="8" placeholder="' + (wsT('webshell.dbSqlPlaceholder') || '输入 SQL，例如：SELECT version();') + '"></textarea>' +
-        '<div class="webshell-db-actions">' +
-        '<button type="button" class="btn-ghost" id="webshell-db-test-btn">' + (wsT('webshell.dbTest') || '测试连接') + '</button>' +
-        '<button type="button" class="btn-primary" id="webshell-db-run-btn">' + (wsT('webshell.dbRunSql') || '执行 SQL') + '</button>' +
         '</div>' +
-        '<div class="webshell-db-output-wrap"><div class="webshell-db-output-title">' + (wsT('webshell.dbOutput') || '执行输出') + '</div><div id="webshell-db-result-table" class="webshell-db-result-table"></div><pre id="webshell-db-output" class="webshell-db-output"></pre><div class="webshell-db-hint">' + (wsT('webshell.dbCliHint') || '如果提示命令不存在，请先在目标主机安装对应客户端（mysql/psql/sqlite3/sqlcmd）') + '</div></div>' +
+        '<div class="modal-footer"><button type="button" class="btn-secondary" id="webshell-db-profile-cancel-btn">取消</button><button type="button" class="btn-primary" id="webshell-db-profile-save-btn">保存</button></div>' +
+        '</div>' +
+        '</div>' +
         '</section>' +
         '</div>' +
         '</div>';
@@ -1770,6 +1783,12 @@ function selectWebshell(id, stateReady) {
     var dbSchemaTreeEl = document.getElementById('webshell-db-schema-tree');
     var dbProfilesEl = document.getElementById('webshell-db-profiles');
     var dbAddProfileBtn = document.getElementById('webshell-db-add-profile-btn');
+    var dbProfileModalEl = document.getElementById('webshell-db-profile-modal');
+    var dbProfileModalTitleEl = document.getElementById('webshell-db-profile-modal-title');
+    var dbProfileModalCloseBtn = document.getElementById('webshell-db-profile-modal-close');
+    var dbProfileModalCancelBtn = document.getElementById('webshell-db-profile-cancel-btn');
+    var dbProfileModalSaveBtn = document.getElementById('webshell-db-profile-save-btn');
+    var dbProfileNameEl = document.getElementById('webshell-db-profile-name');
     var dbHostEl = document.getElementById('webshell-db-host');
     var dbPortEl = document.getElementById('webshell-db-port');
     var dbUserEl = document.getElementById('webshell-db-user');
@@ -1793,9 +1812,19 @@ function selectWebshell(id, stateReady) {
         if (dbAddProfileBtn) dbAddProfileBtn.disabled = disabled;
     }
 
+    function setDbProfileModalVisible(visible, mode) {
+        if (!dbProfileModalEl) return;
+        dbProfileModalEl.style.display = visible ? 'block' : 'none';
+        if (dbProfileModalTitleEl) {
+            if (mode === 'add') dbProfileModalTitleEl.textContent = wsT('webshell.dbAddProfile') || '新增连接';
+            else dbProfileModalTitleEl.textContent = wsT('webshell.editConnectionTitle') || '编辑连接';
+        }
+    }
+
     function applyActiveDbProfileToForm() {
         var dbCfg = getWebshellDbConfig(conn);
         if (!dbCfg) return;
+        if (dbProfileNameEl) dbProfileNameEl.value = dbCfg.name || 'DB-1';
         if (dbTypeEl) dbTypeEl.value = dbCfg.type || 'mysql';
         if (dbHostEl) dbHostEl.value = dbCfg.host || '127.0.0.1';
         if (dbPortEl) dbPortEl.value = dbCfg.port || '';
@@ -1817,7 +1846,7 @@ function selectWebshell(id, stateReady) {
             var active = p.id === state.activeProfileId;
             html += '<div class="webshell-db-profile-tab' + (active ? ' active' : '') + '" data-id="' + escapeHtml(p.id) + '">' +
                 '<button type="button" class="webshell-db-profile-main" data-action="switch" data-id="' + escapeHtml(p.id) + '">' + escapeHtml(p.name || 'DB') + '</button>' +
-                '<button type="button" class="webshell-db-profile-menu" data-action="rename" data-id="' + escapeHtml(p.id) + '" title="' + escapeHtml(wsT('webshell.dbRenameProfile') || '重命名') + '">✎</button>' +
+                '<button type="button" class="webshell-db-profile-menu" data-action="edit" data-id="' + escapeHtml(p.id) + '" title="' + escapeHtml(wsT('webshell.editConnection') || '编辑') + '">⚙</button>' +
                 '<button type="button" class="webshell-db-profile-menu" data-action="delete" data-id="' + escapeHtml(p.id) + '" title="' + escapeHtml(wsT('webshell.dbDeleteProfile') || '删除连接') + '">×</button>' +
                 '</div>';
         });
@@ -1839,15 +1868,12 @@ function selectWebshell(id, stateReady) {
                     renderDbSchemaTree();
                     return;
                 }
-                if (action === 'rename') {
-                    var curr = state.profiles[idx].name || '';
-                    var next = prompt(wsT('webshell.dbProfileNamePrompt') || '请输入连接名称', curr);
-                    if (next == null) return;
-                    next = String(next || '').trim();
-                    if (!next) return;
-                    state.profiles[idx].name = next.slice(0, 30);
+                if (action === 'edit') {
+                    state.activeProfileId = id;
                     saveWebshellDbState(conn, state);
+                    applyActiveDbProfileToForm();
                     renderDbProfileTabs();
+                    setDbProfileModalVisible(true, 'edit');
                     return;
                 }
                 if (action === 'delete') {
@@ -2179,11 +2205,12 @@ function selectWebshell(id, stateReady) {
         resetDbColumnLoadCache();
         renderDbSchemaTree();
     });
-    ['webshell-db-host', 'webshell-db-port', 'webshell-db-user', 'webshell-db-pass', 'webshell-db-name', 'webshell-db-sqlite-path'].forEach(function (id) {
+    ['webshell-db-profile-name', 'webshell-db-host', 'webshell-db-port', 'webshell-db-user', 'webshell-db-pass', 'webshell-db-name', 'webshell-db-sqlite-path'].forEach(function (id) {
         var el = document.getElementById(id);
         if (el) el.addEventListener('change', function () {
             webshellDbCollectConfig(conn);
             resetDbColumnLoadCache();
+            renderDbProfileTabs();
         });
     });
     if (dbSqlEl) dbSqlEl.addEventListener('change', function () { webshellDbCollectConfig(conn); });
@@ -2203,6 +2230,25 @@ function selectWebshell(id, stateReady) {
         if (dbSqlEl) dbSqlEl.value = '';
         webshellDbCollectConfig(conn);
     });
+    if (dbProfileModalCloseBtn) dbProfileModalCloseBtn.addEventListener('click', function () {
+        setDbProfileModalVisible(false);
+    });
+    if (dbProfileModalCancelBtn) dbProfileModalCancelBtn.addEventListener('click', function () {
+        applyActiveDbProfileToForm();
+        setDbProfileModalVisible(false);
+    });
+    if (dbProfileModalSaveBtn) dbProfileModalSaveBtn.addEventListener('click', function () {
+        webshellDbCollectConfig(conn);
+        renderDbProfileTabs();
+        resetDbColumnLoadCache();
+        setDbProfileModalVisible(false);
+    });
+    if (dbProfileModalEl) dbProfileModalEl.addEventListener('click', function (evt) {
+        if (evt.target === dbProfileModalEl) {
+            applyActiveDbProfileToForm();
+            setDbProfileModalVisible(false);
+        }
+    });
     if (dbAddProfileBtn) dbAddProfileBtn.addEventListener('click', function () {
         var state = getWebshellDbState(conn);
         var name = 'DB-' + (state.profiles.length + 1);
@@ -2213,10 +2259,12 @@ function selectWebshell(id, stateReady) {
         applyActiveDbProfileToForm();
         renderDbProfileTabs();
         renderDbSchemaTree();
+        setDbProfileModalVisible(true, 'add');
     });
     renderDbProfileTabs();
     applyActiveDbProfileToForm();
     renderDbSchemaTree();
+    setDbProfileModalVisible(false);
 
     initWebshellTerminal(conn);
 }
@@ -3699,6 +3747,8 @@ function refreshWebshellUIOnLanguageChange() {
             }
             var dbTypeLabel = document.querySelector('#webshell-db-type') ? document.querySelector('#webshell-db-type').closest('label') : null;
             if (dbTypeLabel && dbTypeLabel.querySelector('span')) dbTypeLabel.querySelector('span').textContent = wsT('webshell.dbType') || '数据库类型';
+            var dbProfileNameLabel = document.querySelector('#webshell-db-profile-name') ? document.querySelector('#webshell-db-profile-name').closest('label') : null;
+            if (dbProfileNameLabel && dbProfileNameLabel.querySelector('span')) dbProfileNameLabel.querySelector('span').textContent = wsT('webshell.dbProfileName') || '连接名称';
             var dbHostLabel = document.querySelector('#webshell-db-host') ? document.querySelector('#webshell-db-host').closest('label') : null;
             if (dbHostLabel && dbHostLabel.querySelector('span')) dbHostLabel.querySelector('span').textContent = wsT('webshell.dbHost') || '主机';
             var dbPortLabel = document.querySelector('#webshell-db-port') ? document.querySelector('#webshell-db-port').closest('label') : null;
@@ -3733,8 +3783,14 @@ function refreshWebshellUIOnLanguageChange() {
             if (dbTreeHint) dbTreeHint.textContent = wsT('webshell.dbSelectTableHint') || '点击表名可生成查询 SQL';
             var dbAddProfileBtn = document.getElementById('webshell-db-add-profile-btn');
             if (dbAddProfileBtn) dbAddProfileBtn.textContent = '+ ' + (wsT('webshell.dbAddProfile') || '新增连接');
-            document.querySelectorAll('.webshell-db-profile-menu[data-action="rename"]').forEach(function (el) {
-                el.title = wsT('webshell.dbRenameProfile') || '重命名';
+            var dbProfileModalTitle = document.getElementById('webshell-db-profile-modal-title');
+            if (dbProfileModalTitle) dbProfileModalTitle.textContent = wsT('webshell.editConnectionTitle') || '编辑连接';
+            var dbProfileCancelBtn = document.getElementById('webshell-db-profile-cancel-btn');
+            if (dbProfileCancelBtn) dbProfileCancelBtn.textContent = '取消';
+            var dbProfileSaveBtn = document.getElementById('webshell-db-profile-save-btn');
+            if (dbProfileSaveBtn) dbProfileSaveBtn.textContent = '保存';
+            document.querySelectorAll('.webshell-db-profile-menu[data-action="edit"]').forEach(function (el) {
+                el.title = wsT('webshell.editConnection') || '编辑';
             });
             document.querySelectorAll('.webshell-db-profile-menu[data-action="delete"]').forEach(function (el) {
                 el.title = wsT('webshell.dbDeleteProfile') || '删除连接';

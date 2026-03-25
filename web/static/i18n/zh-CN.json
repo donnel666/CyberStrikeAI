@@ -407,6 +407,7 @@
     "dbDeleteProfile": "删除连接",
     "dbDeleteProfileConfirm": "确定删除该数据库连接配置吗？",
     "dbProfileNamePrompt": "请输入连接名称",
+    "dbProfileName": "连接名称",
     "dbProfiles": "数据库连接",
     "aiSystemReadyMessage": "系统已就绪。请输入您的测试需求，系统将自动执行相应的安全测试。",
     "aiNewConversation": "新对话",
