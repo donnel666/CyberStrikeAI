@@ -2831,6 +2831,16 @@ header {
     color: var(--text-primary);
 }
 
+/* 详情区底部「收起/展开」，流式输出过长时无需滚回顶部即可折叠 */
+.progress-footer {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-color);
+}
+
 .progress-timeline {
     max-height: 0;
     overflow: hidden;

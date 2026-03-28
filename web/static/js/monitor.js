@@ -176,6 +176,23 @@ function isConversationTaskRunning(conversationId) {
     return conversationExecutionTracker.isRunning(conversationId);
 }
 
+/** 距底部该像素内视为「跟随底部」；流式输出时仅在此情况下自动滚到底部，避免用户上滑查看历史时被强制拉回 */
+const CHAT_SCROLL_PIN_THRESHOLD_PX = 120;
+
+/** wasPinned 须在 DOM 追加内容之前计算，否则 scrollHeight 变大后会误判 */
+function scrollChatMessagesToBottomIfPinned(wasPinned) {
+    const messagesDiv = document.getElementById('chat-messages');
+    if (!messagesDiv || !wasPinned) return;
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+}
+
+function isChatMessagesPinnedToBottom() {
+    const messagesDiv = document.getElementById('chat-messages');
+    if (!messagesDiv) return true;
+    const { scrollTop, scrollHeight, clientHeight } = messagesDiv;
+    return scrollHeight - clientHeight - scrollTop <= CHAT_SCROLL_PIN_THRESHOLD_PX;
+}
+
 function registerProgressTask(progressId, conversationId = null) {
     const state = progressTaskState.get(progressId) || {};
     state.conversationId = conversationId !== undefined && conversationId !== null
@@ -257,6 +274,9 @@ function addProgressMessage() {
             </div>
         </div>
         <div class="progress-timeline expanded" id="${id}-timeline"></div>
+        <div class="progress-footer">
+            <button type="button" class="progress-toggle progress-toggle-bottom" onclick="toggleProgressDetails('${id}')">${collapseDetailText}</button>
+        </div>
     `;
     
     contentWrapper.appendChild(bubble);
@@ -271,16 +291,18 @@ function addProgressMessage() {
 // 切换进度详情显示
 function toggleProgressDetails(progressId) {
     const timeline = document.getElementById(progressId + '-timeline');
-    const toggleBtn = document.querySelector(`#${progressId} .progress-toggle`);
+    const toggleBtns = document.querySelectorAll(`#${progressId} .progress-toggle`);
     
-    if (!timeline || !toggleBtn) return;
+    if (!timeline || !toggleBtns.length) return;
     
+    const expandT = typeof window.t === 'function' ? window.t('chat.expandDetail') : '展开详情';
+    const collapseT = typeof window.t === 'function' ? window.t('tasks.collapseDetail') : '收起详情';
     if (timeline.classList.contains('expanded')) {
         timeline.classList.remove('expanded');
-        toggleBtn.textContent = typeof window.t === 'function' ? window.t('chat.expandDetail') : '展开详情';
+        toggleBtns.forEach((btn) => { btn.textContent = expandT; });
     } else {
         timeline.classList.add('expanded');
-        toggleBtn.textContent = typeof window.t === 'function' ? window.t('tasks.collapseDetail') : '收起详情';
+        toggleBtns.forEach((btn) => { btn.textContent = collapseT; });
     }
 }
 
@@ -304,10 +326,9 @@ function collapseAllProgressDetails(assistantMessageId, progressId) {
             if (timeline) {
                 // 确保移除expanded类（无论是否包含）
                 timeline.classList.remove('expanded');
-                const btn = document.querySelector(`#${assistantMessageId} .process-detail-btn`);
-                if (btn) {
+                document.querySelectorAll(`#${assistantMessageId} .process-detail-btn`).forEach((btn) => {
                     btn.innerHTML = '<span>' + (typeof window.t === 'function' ? window.t('chat.expandDetail') : '展开详情') + '</span>';
-                }
+                });
             }
         }
     }
@@ -317,24 +338,22 @@ function collapseAllProgressDetails(assistantMessageId, progressId) {
     const allDetails = document.querySelectorAll('[id^="details-"]');
     allDetails.forEach(detail => {
         const timeline = detail.querySelector('.progress-timeline');
-        const toggleBtn = detail.querySelector('.progress-toggle');
+        const toggleBtns = detail.querySelectorAll('.progress-toggle');
         if (timeline) {
             timeline.classList.remove('expanded');
-            if (toggleBtn) {
-                toggleBtn.textContent = typeof window.t === 'function' ? window.t('chat.expandDetail') : '展开详情';
-            }
+            const expandT = typeof window.t === 'function' ? window.t('chat.expandDetail') : '展开详情';
+            toggleBtns.forEach((btn) => { btn.textContent = expandT; });
         }
     });
     
     // 折叠原始的进度消息（如果还存在）
     if (progressId) {
         const progressTimeline = document.getElementById(progressId + '-timeline');
-        const progressToggleBtn = document.querySelector(`#${progressId} .progress-toggle`);
+        const progressToggleBtns = document.querySelectorAll(`#${progressId} .progress-toggle`);
         if (progressTimeline) {
             progressTimeline.classList.remove('expanded');
-            if (progressToggleBtn) {
-                progressToggleBtn.textContent = typeof window.t === 'function' ? window.t('chat.expandDetail') : '展开详情';
-            }
+            const expandT = typeof window.t === 'function' ? window.t('chat.expandDetail') : '展开详情';
+            progressToggleBtns.forEach((btn) => { btn.textContent = expandT; });
         }
     }
 }
@@ -457,10 +476,10 @@ function integrateProgressToMCPSection(progressId, assistantMessageId, mcpExecut
             timeline.classList.remove('expanded');
         }
         
-        const processDetailBtn = buttonsContainer.querySelector('.process-detail-btn');
-        if (processDetailBtn) {
-            processDetailBtn.innerHTML = '<span>' + (typeof window.t === 'function' ? window.t('chat.expandDetail') : '展开详情') + '</span>';
-        }
+        const expandLabel = typeof window.t === 'function' ? window.t('chat.expandDetail') : '展开详情';
+        document.querySelectorAll(`#${assistantMessageId} .process-detail-btn`).forEach((btn) => {
+            btn.innerHTML = '<span>' + expandLabel + '</span>';
+        });
     }
     
     // 移除原来的进度消息
@@ -475,25 +494,28 @@ function toggleProcessDetails(progressId, assistantMessageId) {
     
     const content = detailsContainer.querySelector('.process-details-content');
     const timeline = detailsContainer.querySelector('.progress-timeline');
-    const btn = document.querySelector(`#${assistantMessageId} .process-detail-btn`);
+    const detailBtns = document.querySelectorAll(`#${assistantMessageId} .process-detail-btn`);
     
     const expandT = typeof window.t === 'function' ? window.t('chat.expandDetail') : '展开详情';
     const collapseT = typeof window.t === 'function' ? window.t('tasks.collapseDetail') : '收起详情';
+    const setDetailBtnLabels = (label) => {
+        detailBtns.forEach((btn) => { btn.innerHTML = '<span>' + label + '</span>'; });
+    };
     if (content && timeline) {
         if (timeline.classList.contains('expanded')) {
             timeline.classList.remove('expanded');
-            if (btn) btn.innerHTML = '<span>' + expandT + '</span>';
+            setDetailBtnLabels(expandT);
         } else {
             timeline.classList.add('expanded');
-            if (btn) btn.innerHTML = '<span>' + collapseT + '</span>';
+            setDetailBtnLabels(collapseT);
         }
     } else if (timeline) {
         if (timeline.classList.contains('expanded')) {
             timeline.classList.remove('expanded');
-            if (btn) btn.innerHTML = '<span>' + expandT + '</span>';
+            setDetailBtnLabels(expandT);
         } else {
             timeline.classList.add('expanded');
-            if (btn) btn.innerHTML = '<span>' + collapseT + '</span>';
+            setDetailBtnLabels(collapseT);
         }
     }
     
@@ -600,7 +622,7 @@ function convertProgressToDetails(progressId, assistantMessageId) {
             <span class="progress-title">📋 ${penetrationDetailText}</span>
             ${hasContent ? `<button class="progress-toggle" onclick="toggleProgressDetails('${detailsId}')">${toggleText}</button>` : ''}
         </div>
-        ${hasContent ? `<div class="progress-timeline ${expandedClass}" id="${detailsId}-timeline">${timelineHTML}</div>` : '<div class="progress-timeline-empty">' + noProcessDetailText + '</div>'}
+        ${hasContent ? `<div class="progress-timeline ${expandedClass}" id="${detailsId}-timeline">${timelineHTML}</div><div class="progress-footer"><button type="button" class="progress-toggle progress-toggle-bottom" onclick="toggleProgressDetails('${detailsId}')">${toggleText}</button></div>` : '<div class="progress-timeline-empty">' + noProcessDetailText + '</div>'}
     `;
     
     contentWrapper.appendChild(bubble);
@@ -608,6 +630,7 @@ function convertProgressToDetails(progressId, assistantMessageId) {
     
     // 将详情组件插入到助手消息之后
     const messagesDiv = document.getElementById('chat-messages');
+    const insertWasPinned = isChatMessagesPinnedToBottom();
     // assistantElement 是消息div，需要插入到它的下一个兄弟节点之前
     if (assistantElement.nextSibling) {
         messagesDiv.insertBefore(detailsDiv, assistantElement.nextSibling);
@@ -619,13 +642,13 @@ function convertProgressToDetails(progressId, assistantMessageId) {
     // 移除原来的进度消息
     removeMessage(progressId);
     
-    // 滚动到底部
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    scrollChatMessagesToBottomIfPinned(insertWasPinned);
 }
 
 // 处理流式事件
 function handleStreamEvent(event, progressElement, progressId, 
                           getAssistantId, setAssistantId, getMcpIds, setMcpIds) {
+    const streamScrollWasPinned = isChatMessagesPinnedToBottom();
     const timeline = document.getElementById(progressId + '-timeline');
     if (!timeline) return;
 
@@ -1306,9 +1329,8 @@ function handleStreamEvent(event, progressElement, progressId,
             break;
     }
     
-    // 自动滚动到底部
-    const messagesDiv = document.getElementById('chat-messages');
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    // 仅在事件处理前用户已在底部附近时跟随滚到底部（避免上滑看历史时被拉回）
+    scrollChatMessagesToBottomIfPinned(streamScrollWasPinned);
 }
 
 // 更新工具调用状态
