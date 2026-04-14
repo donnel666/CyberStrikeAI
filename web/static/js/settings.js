@@ -273,6 +273,9 @@ async function loadConfig(loadTools = true) {
 // 工具搜索关键词
 let toolsSearchKeyword = '';
 
+// 工具状态筛选: '' = 全部, 'true' = 已启用, 'false' = 已停用
+let toolsStatusFilter = '';
+
 // 加载工具列表（分页）
 async function loadToolsList(page = 1, searchKeyword = '') {
     const toolsList = document.getElementById('tools-list');
@@ -291,6 +294,9 @@ async function loadToolsList(page = 1, searchKeyword = '') {
         let url = `/api/config/tools?page=${page}&page_size=${pageSize}`;
         if (searchKeyword) {
             url += `&search=${encodeURIComponent(searchKeyword)}`;
+        }
+        if (toolsStatusFilter !== '') {
+            url += `&enabled=${toolsStatusFilter}`;
         }
         
         // 使用较短的超时时间（10秒），避免长时间等待
@@ -385,6 +391,17 @@ function handleSearchKeyPress(event) {
     if (event.key === 'Enter') {
         searchTools();
     }
+}
+
+// 按状态筛选工具
+function filterToolsByStatus(status) {
+    toolsStatusFilter = status;
+    // 更新按钮激活状态
+    document.querySelectorAll('.tools-status-filter .btn-filter').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.filter === status);
+    });
+    // 重置到第一页并重新加载
+    loadToolsList(1, toolsSearchKeyword);
 }
 
 // 渲染工具列表

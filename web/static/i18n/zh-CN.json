@@ -507,6 +507,8 @@
     "toolSearchPlaceholder": "输入工具名称...",
     "statusFilter": "状态筛选",
     "filterAll": "全部",
+    "filterEnabled": "已启用",
+    "filterDisabled": "已停用",
     "selectedCount": "已选择 {{count}} 项",
     "selectAll": "全选",
     "deselectAll": "全不选",

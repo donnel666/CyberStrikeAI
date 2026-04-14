@@ -3826,6 +3826,41 @@ header {
     align-items: center;
 }
 
+.tools-status-filter {
+    display: flex;
+    gap: 0;
+    flex-shrink: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.tools-status-filter .btn-filter {
+    padding: 6px 12px;
+    border: none;
+    border-right: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.tools-status-filter .btn-filter:last-child {
+    border-right: none;
+}
+
+.tools-status-filter .btn-filter:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.tools-status-filter .btn-filter.active {
+    background: var(--accent-color);
+    color: #fff;
+}
+
 .page-size-selector {
     display: flex;
     align-items: center;

@@ -507,6 +507,8 @@
     "toolSearchPlaceholder": "Enter tool name...",
     "statusFilter": "Status filter",
     "filterAll": "All",
+    "filterEnabled": "Enabled",
+    "filterDisabled": "Disabled",
     "selectedCount": "{{count}} selected",
     "selectAll": "Select all",
     "deselectAll": "Deselect all",

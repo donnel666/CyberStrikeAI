@@ -725,6 +725,11 @@
                                 <div class="tools-actions">
                                     <button class="btn-secondary" onclick="selectAllTools()" data-i18n="mcp.selectAll">全选</button>
                                     <button class="btn-secondary" onclick="deselectAllTools()" data-i18n="mcp.deselectAll">全不选</button>
+                                    <div class="tools-status-filter">
+                                        <button class="btn-filter active" data-filter="" onclick="filterToolsByStatus('')" data-i18n="mcp.filterAll">全部</button>
+                                        <button class="btn-filter" data-filter="true" onclick="filterToolsByStatus('true')" data-i18n="mcp.filterEnabled">已启用</button>
+                                        <button class="btn-filter" data-filter="false" onclick="filterToolsByStatus('false')" data-i18n="mcp.filterDisabled">已停用</button>
+                                    </div>
                                     <div class="search-box">
                                         <input type="text" id="tools-search" data-i18n="mcp.toolSearchPlaceholder" data-i18n-attr="placeholder" placeholder="搜索工具..." onkeypress="handleSearchKeyPress(event)" oninput="if(this.value.trim() === '') clearSearch()" />
                                         <button class="btn-search" onclick="searchTools()" data-i18n="common.search" data-i18n-attr="title" title="搜索">🔍</button>
