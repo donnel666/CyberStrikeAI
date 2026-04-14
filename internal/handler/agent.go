@@ -1589,6 +1589,7 @@ type BatchTaskRequest struct {
 	AgentMode    string   `json:"agentMode,omitempty"`      // single | multi
 	ScheduleMode string   `json:"scheduleMode,omitempty"`   // manual | cron
 	CronExpr     string   `json:"cronExpr,omitempty"`       // scheduleMode=cron 时必填
+	ExecuteNow   bool     `json:"executeNow,omitempty"`     // 创建后是否立即执行（默认 false）
 }
 
 func normalizeBatchQueueAgentMode(mode string) string {
@@ -1650,9 +1651,26 @@ func (h *AgentHandler) CreateBatchQueue(c *gin.Context) {
 	}
 
 	queue := h.batchTaskManager.CreateBatchQueue(req.Title, req.Role, agentMode, scheduleMode, cronExpr, nextRunAt, validTasks)
+	started := false
+	if req.ExecuteNow {
+		ok, err := h.startBatchQueueExecution(queue.ID, false)
+		if !ok {
+			c.JSON(http.StatusNotFound, gin.H{"error": "队列不存在"})
+			return
+		}
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "queueId": queue.ID})
+			return
+		}
+		started = true
+		if refreshed, exists := h.batchTaskManager.GetBatchQueue(queue.ID); exists {
+			queue = refreshed
+		}
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"queueId": queue.ID,
 		"queue":   queue,
+		"started": started,
 	})
 }
 

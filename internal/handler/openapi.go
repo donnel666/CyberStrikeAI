@@ -403,6 +403,24 @@ func (h *OpenAPIHandler) GetOpenAPISpec(c *gin.Context) {
 							"type":        "string",
 							"description": "角色名称（可选）",
 						},
+						"agentMode": map[string]interface{}{
+							"type":        "string",
+							"description": "代理模式（single | multi）",
+							"enum":        []string{"single", "multi"},
+						},
+						"scheduleMode": map[string]interface{}{
+							"type":        "string",
+							"description": "调度方式（manual | cron）",
+							"enum":        []string{"manual", "cron"},
+						},
+						"cronExpr": map[string]interface{}{
+							"type":        "string",
+							"description": "Cron 表达式（scheduleMode=cron 时必填）",
+						},
+						"executeNow": map[string]interface{}{
+							"type":        "boolean",
+							"description": "是否创建后立即执行（默认 false）",
+						},
 					},
 				},
 				"BatchQueue": map[string]interface{}{
@@ -1540,9 +1558,9 @@ func (h *OpenAPIHandler) GetOpenAPISpec(c *gin.Context) {
 								"schema": map[string]interface{}{
 									"type": "object",
 									"properties": map[string]interface{}{
-										"message":            map[string]interface{}{"type": "string"},
-										"conversationId":     map[string]interface{}{"type": "string"},
-										"role":               map[string]interface{}{"type": "string"},
+										"message":              map[string]interface{}{"type": "string"},
+										"conversationId":       map[string]interface{}{"type": "string"},
+										"role":                 map[string]interface{}{"type": "string"},
 										"webshellConnectionId": map[string]interface{}{"type": "string"},
 									},
 									"required": []string{"message"},
@@ -1710,6 +1728,10 @@ func (h *OpenAPIHandler) GetOpenAPISpec(c *gin.Context) {
 											},
 											"queue": map[string]interface{}{
 												"$ref": "#/components/schemas/BatchQueue",
+											},
+											"started": map[string]interface{}{
+												"type":        "boolean",
+												"description": "是否已立即启动执行",
 											},
 										},
 									},

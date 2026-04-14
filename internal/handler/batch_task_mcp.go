@@ -120,8 +120,8 @@ func RegisterBatchTaskMCPTools(mcpServer *mcp.Server, h *AgentHandler, logger *z
 		Name: builtin.ToolBatchTaskCreate,
 		Description: `创建新的批量任务队列。任务列表使用 tasks（字符串数组）或 tasks_text（多行，每行一条）。
 agent_mode: single（默认）或 multi（需系统启用多代理）。schedule_mode: manual（默认）或 cron；为 cron 时必须提供 cron_expr（如 "0 */6 * * *"）。
-重要：创建成功后队列处于 pending，不会自动开始跑子任务。若要立即执行或手工开跑，必须再调用工具 batch_task_start（传入返回的 queue_id）。Cron 队列若需按表达式自动触发下一轮，还需保持调度开关开启（可用 batch_task_schedule_enabled）。`,
-		ShortDescription: "创建批量任务队列（创建后需 batch_task_start 才会执行）",
+默认创建后不会立即执行。可通过 execute_now=true 在创建后立即启动；也可后续调用 batch_task_start 手工启动。Cron 队列若需按表达式自动触发下一轮，还需保持调度开关开启（可用 batch_task_schedule_enabled）。`,
+		ShortDescription: "创建批量任务队列（可选立即执行）",
 		InputSchema: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -156,6 +156,10 @@ agent_mode: single（默认）或 multi（需系统启用多代理）。schedule
 					"type":        "string",
 					"description": "schedule_mode 为 cron 时必填",
 				},
+				"execute_now": map[string]interface{}{
+					"type":        "boolean",
+					"description": "是否创建后立即执行，默认 false",
+				},
 			},
 		},
 	}, func(ctx context.Context, args map[string]interface{}) (*mcp.ToolResult, error) {
@@ -180,12 +184,37 @@ agent_mode: single（默认）或 multi（需系统启用多代理）。schedule
 			n := sch.Next(time.Now())
 			nextRunAt = &n
 		}
+		executeNow, ok := mcpArgBool(args, "execute_now")
+		if !ok {
+			executeNow = false
+		}
 		queue := h.batchTaskManager.CreateBatchQueue(title, role, agentMode, scheduleMode, cronExpr, nextRunAt, tasks)
+		started := false
+		if executeNow {
+			ok, err := h.startBatchQueueExecution(queue.ID, false)
+			if !ok {
+				return batchMCPTextResult("队列不存在: "+queue.ID, true), nil
+			}
+			if err != nil {
+				return batchMCPTextResult("创建成功但启动失败: "+err.Error(), true), nil
+			}
+			started = true
+			if refreshed, exists := h.batchTaskManager.GetBatchQueue(queue.ID); exists {
+				queue = refreshed
+			}
+		}
 		logger.Info("MCP batch_task_create", zap.String("queueId", queue.ID), zap.Int("taskCount", len(tasks)))
 		return batchMCPJSONResult(map[string]interface{}{
-			"queue_id": queue.ID,
-			"queue":    queue,
-			"reminder": "队列已创建，当前为 pending。需要开始执行时请调用 MCP工具 batch_task_start（queue_id 同上）。Cron 自动调度需 schedule_enabled 为 true，可用 batch_task_schedule_enabled。",
+			"queue_id":    queue.ID,
+			"queue":       queue,
+			"started":     started,
+			"execute_now": executeNow,
+			"reminder": func() string {
+				if started {
+					return "队列已创建并立即启动。"
+				}
+				return "队列已创建，当前为 pending。需要开始执行时请调用 MCP 工具 batch_task_start（queue_id 同上）。Cron 自动调度需 schedule_enabled 为 true，可用 batch_task_schedule_enabled。"
+			}(),
 		})
 	})
 

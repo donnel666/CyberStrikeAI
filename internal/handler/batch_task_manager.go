@@ -678,7 +678,7 @@ func (m *BatchTaskManager) ResetQueueForRerun(queueID string) bool {
 	return true
 }
 
-// UpdateTaskMessage 更新任务消息（仅限待执行状态）
+// UpdateTaskMessage 更新任务消息（队列空闲时可改；任务需非 running）
 func (m *BatchTaskManager) UpdateTaskMessage(queueID, taskID, message string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -688,17 +688,15 @@ func (m *BatchTaskManager) UpdateTaskMessage(queueID, taskID, message string) er
 		return fmt.Errorf("队列不存在")
 	}
 
-	// 检查队列状态，只有待执行状态的队列才能编辑任务
-	if queue.Status != "pending" {
-		return fmt.Errorf("只有待执行状态的队列才能编辑任务")
+	if !queueAllowsTaskListMutationLocked(queue) {
+		return fmt.Errorf("队列正在执行或未就绪，无法编辑任务")
 	}
 
 	// 查找并更新任务
 	for _, task := range queue.Tasks {
 		if task.ID == taskID {
-			// 只有待执行状态的任务才能编辑
-			if task.Status != "pending" {
-				return fmt.Errorf("只有待执行状态的任务才能编辑")
+			if task.Status == "running" {
+				return fmt.Errorf("执行中的任务不能编辑")
 			}
 			task.Message = message
 
@@ -715,7 +713,7 @@ func (m *BatchTaskManager) UpdateTaskMessage(queueID, taskID, message string) er
 	return fmt.Errorf("任务不存在")
 }
 
-// AddTaskToQueue 添加任务到队列（仅限待执行状态）
+// AddTaskToQueue 添加任务到队列（队列空闲时可添加：含 cron 本轮 completed、手动暂停后等）
 func (m *BatchTaskManager) AddTaskToQueue(queueID, message string) (*BatchTask, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -725,9 +723,8 @@ func (m *BatchTaskManager) AddTaskToQueue(queueID, message string) (*BatchTask, 
 		return nil, fmt.Errorf("队列不存在")
 	}
 
-	// 检查队列状态，只有待执行状态的队列才能添加任务
-	if queue.Status != "pending" {
-		return nil, fmt.Errorf("只有待执行状态的队列才能添加任务")
+	if !queueAllowsTaskListMutationLocked(queue) {
+		return nil, fmt.Errorf("队列正在执行或未就绪，无法添加任务")
 	}
 
 	if message == "" {
@@ -757,7 +754,7 @@ func (m *BatchTaskManager) AddTaskToQueue(queueID, message string) (*BatchTask, 
 	return task, nil
 }
 
-// DeleteTask 删除任务（仅限待执行状态）
+// DeleteTask 删除任务（队列空闲时可删；执行中任务不可删）
 func (m *BatchTaskManager) DeleteTask(queueID, taskID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -767,18 +764,16 @@ func (m *BatchTaskManager) DeleteTask(queueID, taskID string) error {
 		return fmt.Errorf("队列不存在")
 	}
 
-	// 检查队列状态，只有待执行状态的队列才能删除任务
-	if queue.Status != "pending" {
-		return fmt.Errorf("只有待执行状态的队列才能删除任务")
+	if !queueAllowsTaskListMutationLocked(queue) {
+		return fmt.Errorf("队列正在执行或未就绪，无法删除任务")
 	}
 
 	// 查找并删除任务
 	taskIndex := -1
 	for i, task := range queue.Tasks {
 		if task.ID == taskID {
-			// 只有待执行状态的任务才能删除
-			if task.Status != "pending" {
-				return fmt.Errorf("只有待执行状态的任务才能删除")
+			if task.Status == "running" {
+				return fmt.Errorf("执行中的任务不能删除")
 			}
 			taskIndex = i
 			break
@@ -802,6 +797,37 @@ func (m *BatchTaskManager) DeleteTask(queueID, taskID string) error {
 	}
 
 	return nil
+}
+
+func queueHasRunningTaskLocked(queue *BatchTaskQueue) bool {
+	if queue == nil {
+		return false
+	}
+	for _, t := range queue.Tasks {
+		if t != nil && t.Status == "running" {
+			return true
+		}
+	}
+	return false
+}
+
+// queueAllowsTaskListMutationLocked 是否允许增删改子任务文案/列表（必须在持有 BatchTaskManager.mu 下调用）
+func queueAllowsTaskListMutationLocked(queue *BatchTaskQueue) bool {
+	if queue == nil {
+		return false
+	}
+	if queue.Status == "running" {
+		return false
+	}
+	if queueHasRunningTaskLocked(queue) {
+		return false
+	}
+	switch queue.Status {
+	case "pending", "paused", "completed", "cancelled":
+		return true
+	default:
+		return false
+	}
 }
 
 // GetNextTask 获取下一个待执行的任务
