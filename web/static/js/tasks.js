@@ -1383,9 +1383,14 @@ async function showBatchQueueDetail(queueId) {
                         <label style="font-size:12px;margin-right:4px;">${escapeHtml(_t('batchQueueDetailModal.queueTitle'))}</label>
                         <input type="text" id="bq-edit-title" value="${escapeHtml(queue.title || '')}" placeholder="${escapeHtml(_t('batchImportModal.queueTitleHint') || '')}" style="padding:4px 8px;border-radius:4px;border:1px solid #d0d0d0;font-size:13px;width:160px;" />
                         <label style="font-size:12px;margin-left:12px;margin-right:4px;">${escapeHtml(_t('batchQueueDetailModal.role'))}</label>
-                        <select id="bq-edit-role" style="padding:4px 8px;border-radius:4px;border:1px solid #d0d0d0;font-size:13px;min-width:120px;">
+                        <select id="bq-edit-role" style="padding:4px 8px;border-radius:4px;border:1px solid #d0d0d0;font-size:13px;min-width:120px;max-width:200px;">
                             <option value="">${escapeHtml(_t('batchImportModal.defaultRole'))}</option>
-                            ${(Array.isArray(loadedRoles) ? loadedRoles : []).filter(r => r.name !== '默认' && r.enabled !== false).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh-CN')).map(r => `<option value="${escapeHtml(r.name)}" ${r.name === (queue.role || '') ? 'selected' : ''}>${escapeHtml(r.name)}</option>`).join('')}
+                            ${(() => {
+                                const roles = (Array.isArray(loadedRoles) ? loadedRoles : []).filter(r => r.name !== '默认' && r.enabled !== false).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh-CN'));
+                                const currentInList = !queue.role || queue.role === '' || roles.some(r => r.name === queue.role);
+                                const orphan = !currentInList ? `<option value="${escapeHtml(queue.role)}" selected>${escapeHtml(queue.role)} (${escapeHtml(_t('batchQueueDetailModal.roleNotFound') || '已移除')})</option>` : '';
+                                return orphan + roles.map(r => `<option value="${escapeHtml(r.name)}" ${r.name === (queue.role || '') ? 'selected' : ''}>${escapeHtml(r.name)}</option>`).join('');
+                            })()}
                         </select>
                         <button class="btn-primary btn-small" onclick="saveEditMetadata()" style="margin-left:8px;padding:2px 12px;font-size:12px;">${escapeHtml(_t('common.save'))}</button>
                         <button class="btn-secondary btn-small" onclick="hideEditMetadataInline()" style="margin-left:4px;padding:2px 12px;font-size:12px;">${escapeHtml(_t('common.cancel'))}</button>
@@ -1632,9 +1637,11 @@ function startBatchQueueRefresh(queueId) {
         const editModal = document.getElementById('edit-batch-task-modal');
         const addModal = document.getElementById('add-batch-task-modal');
         const editScheduleRow = document.getElementById('bq-edit-schedule-row');
+        const editMetadataRow = document.getElementById('bq-edit-metadata-row');
         if ((editModal && editModal.style.display === 'block') ||
             (addModal && addModal.style.display === 'block') ||
-            (editScheduleRow && editScheduleRow.style.display !== 'none')) {
+            (editScheduleRow && editScheduleRow.style.display !== 'none') ||
+            (editMetadataRow && editMetadataRow.style.display !== 'none')) {
             return;
         }
         if (batchQueuesState.currentQueueId === queueId) {
@@ -2041,6 +2048,9 @@ async function updateBatchQueueScheduleEnabled(enabled) {
 
 // --- 元数据（标题/角色）内联编辑 ---
 function showEditMetadataInline() {
+    // 关闭调度编辑行（互斥）
+    const schedRow = document.getElementById('bq-edit-schedule-row');
+    if (schedRow) schedRow.style.display = 'none';
     const row = document.getElementById('bq-edit-metadata-row');
     if (row) row.style.display = '';
 }
@@ -2077,24 +2087,30 @@ async function saveEditMetadata() {
 async function retryBatchTask(queueId, taskId) {
     if (!queueId || !taskId) return;
     try {
-        // 将失败任务重置为 pending（通过更新消息触发状态刷新不可行，需后端支持）
-        // 利用已有的 update task API：先获取当前消息，再 PUT 回去（后端会保留 message 但不重置状态）
-        // 实际上后端 UpdateTaskMessage 不修改 status，所以我们需要直接调 API 修改 status
-        // 暂时方案：删除旧任务+重新添加同内容任务
+        // 获取任务消息
         const detailResp = await apiFetch(`/api/batch-tasks/${queueId}`);
         if (!detailResp.ok) throw new Error(_t('tasks.getQueueDetailFailed'));
         const detail = await detailResp.json();
         const task = detail.queue.tasks.find(t => t.id === taskId);
-        if (!task) throw new Error('Task not found');
+        if (!task) throw new Error(_t('tasks.taskNotFound') || 'Task not found');
         const message = task.message;
-        // 删除旧任务
-        await apiFetch(`/api/batch-tasks/${queueId}/tasks/${taskId}`, { method: 'DELETE' });
-        // 添加新任务（会自动为 pending）
-        await apiFetch(`/api/batch-tasks/${queueId}/tasks`, {
+
+        // 先添加新任务（pending），再删除旧任务 — 避免先删后加失败导致任务丢失
+        const addResp = await apiFetch(`/api/batch-tasks/${queueId}/tasks`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ message }),
         });
+        if (!addResp.ok) {
+            const r = await addResp.json().catch(() => ({}));
+            throw new Error(r.error || _t('tasks.addTaskFailed'));
+        }
+        // 新任务添加成功后才删除旧任务
+        const delResp = await apiFetch(`/api/batch-tasks/${queueId}/tasks/${taskId}`, { method: 'DELETE' });
+        if (!delResp.ok) {
+            // 删除失败不阻塞（新任务已添加，旧任务保留也不影响）
+            console.warn('删除旧任务失败，但新任务已添加');
+        }
         showBatchQueueDetail(queueId);
         refreshBatchQueues();
     } catch (e) {
@@ -2105,6 +2121,9 @@ async function retryBatchTask(queueId, taskId) {
 
 // --- 调度配置内联编辑 ---
 function showEditScheduleInline() {
+    // 关闭元数据编辑行（互斥）
+    const metaRow = document.getElementById('bq-edit-metadata-row');
+    if (metaRow) metaRow.style.display = 'none';
     const row = document.getElementById('bq-edit-schedule-row');
     if (row) row.style.display = '';
 }
