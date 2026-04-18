@@ -64,12 +64,17 @@ multi_agent:
   enabled: true
   default_mode: multi # single | multi（前端默认，仍可用界面切换）
   robot_use_multi_agent: true # true 时企业微信/钉钉/飞书机器人也走 Eino 多代理（成本更高）
-  batch_use_multi_agent: true # true 时「批量任务」队列中每个子任务也走 Eino 多代理（成本更高）
+  batch_use_multi_agent: false # true 时「批量任务」队列中每个子任务也走 Eino 多代理（成本更高）
   max_iteration: 0 # Deep 主代理最大轮次，0 表示沿用 agent.max_iterations
   sub_agent_max_iterations: 120
   without_general_sub_agent: false # false 时保留 Deep 内置 general-purpose 子代理
   without_write_todos: false
   orchestrator_instruction: "" # 非空且未使用 agents/orchestrator.md 正文时作为 Deep 主代理系统提示；若存在 orchestrator.md（或某 .md 含 kind: orchestrator），正文非空则优先用文件，否则仍用此处；留空且无文件正文时用 Eino 默认
+  # Eino 官方 Skills：渐进式披露 + 可选本机文件/Shell（eino-ext local backend）。Skills 目录见 skills_dir。
+  eino_skills:
+    disable: false # true 时不注册 skill 中间件与本地 FS 工具
+    # filesystem_tools: true # 默认 true：注册 read_file/glob/grep/write/edit/execute（授权环境慎用）
+    # skill_tool_name: skill # 覆盖默认工具名
 # 数据库配置
 database:
   path: data/conversations.db # SQLite 数据库文件路径，用于存储对话历史和消息
@@ -111,17 +116,22 @@ external_mcp:
 # 知识库相关配置
 # ============================================
 knowledge:
-  enabled: false # 是否启用知识检索功能
+  enabled: true # 是否启用知识检索功能
   base_path: knowledge_base # 知识库目录路径（相对于配置文件所在目录）
   embedding:
     provider: openai # 嵌入模型提供商（目前仅支持openai）
     model: text-embedding-v4 # 嵌入模型名称
-    base_url: https://api.deepseek.com/v1 # 留空则使用OpenAI配置的base_url
-    api_key: sk-xxxxxx # 留空则使用OpenAI配置的api_key
+    base_url: https://dashscope.aliyuncs.com/compatible-mode/v1 # 留空则使用OpenAI配置的base_url
+    api_key: sk-xxxxxxx # 留空则使用OpenAI配置的api_key
   retrieval:
     top_k: 5 # 检索返回的Top-K结果数量
-    similarity_threshold: 0.7 # 相似度阈值（0-1），低于此值的结果将被过滤
-    hybrid_weight: 0.7 # 混合检索权重（0-1），向量检索的权重，1.0表示纯向量检索，0.0表示纯关键词检索
+    similarity_threshold: 0.4 # 余弦相似度阈值（0-1），低于此值的结果将被过滤
+    # 检索后处理：固定正文规范化去重；上下文预算；可选代码注入 DocumentReranker 做重排
+    post_retrieve:
+      prefetch_top_k: 0 # 0 与 top_k 相同；可设为 15~30 以便去重后仍填满 top_k
+      max_context_chars: 0 # 0 不限制；否则返回的正文总 Unicode 字符上限（整段 chunk）
+      max_context_tokens: 0 # 0 不限制；tiktoken 总 token 上限
+    sub_index_filter: ""
   # ============================================
   # 索引配置（用于解决 API 限制问题）
   # ============================================
@@ -138,6 +148,16 @@ knowledge:
     # 重试配置
     max_retries: 3 # 最大重试次数（默认 3），遇到速率限制或服务器错误时自动重试
     retry_delay_ms: 1000 # 重试间隔毫秒数（默认 1000），每次重试会递增延迟
+    # 分块策略（Eino）：markdown_then_recursive = 先按 Markdown 标题切再递归；recursive = 仅递归切分。留空时程序内默认 markdown_then_recursive
+    chunk_strategy: markdown_then_recursive
+    # 嵌入 HTTP 请求超时（秒）。0 表示使用内置默认（一般为 120），与向量化 API 客户端一致
+    request_timeout_seconds: 120
+    # true：索引时优先用知识项 file_path 指向的磁盘文件内容（Eino FileLoader）；false：用数据库里存的正文。读盘失败会回退 DB
+    prefer_source_file: false
+    # 单次嵌入 API 请求的文本条数上限（索引写入按此分批）。须 ≤ 服务商限制（如部分兼容接口最多 10）；过大易 400
+    batch_size: 10
+    # Eino indexer.WithSubIndexes：逻辑分区标签列表，会写入向量表 sub_indexes，检索可用 sub_index_filter 过滤；无需求可 []
+    sub_indexes: []
 # ============================================
 # 机器人配置（企业微信、钉钉、飞书）
 # ============================================
@@ -164,8 +184,8 @@ robots:
 # Skills 相关配置
 # ============================================
 
-# 系统会从该目录加载所有skills，每个skill应是一个目录，包含SKILL.md文件
-# 例如：skills/sql-injection-testing/SKILL.md
+# 技能包目录：每个子目录仅标准 SKILL.md（Agent Skills：front matter 仅 name、description）+ 可选附属文件；无 SKILL.yaml
+# 示例：skills/cyberstrike-eino-demo/
 skills_dir: skills # Skills配置文件目录（相对于配置文件所在目录）
 # ============================================
 # 多代理子 Agent（Markdown，唯一维护处）
