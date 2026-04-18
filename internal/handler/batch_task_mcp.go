@@ -128,47 +128,51 @@ func RegisterBatchTaskMCPTools(mcpServer *mcp.Server, h *AgentHandler, logger *z
 	// --- create ---
 	reg(mcp.Tool{
 		Name: builtin.ToolBatchTaskCreate,
-		Description: `创建新的批量任务队列。任务列表使用 tasks（字符串数组）或 tasks_text（多行，每行一条）。
-agent_mode: single（默认）或 multi（需系统启用多代理）。schedule_mode: manual（默认）或 cron；为 cron 时必须提供 cron_expr（如 "0 */6 * * *"）。
-默认创建后不会立即执行。可通过 execute_now=true 在创建后立即启动；也可后续调用 batch_task_start 手工启动。Cron 队列若需按表达式自动触发下一轮，还需保持调度开关开启（可用 batch_task_schedule_enabled）。`,
-		ShortDescription: "创建批量任务队列（可选立即执行）",
+		Description: `【用途】应用内「任务管理 / 批量任务队列」：把多条彼此独立的用户指令登记成一条队列，便于在界面里查看进度、暂停/继续、定时重跑等。这是队列数据与调度入口，不是再开一个“子代理会话”替你探索当前问题。
+
+【何时用】用户明确要批量排队执行、Cron 周期跑同一批指令、或需要与任务管理页面对齐时调用。需要即时追问、强依赖当前对话上下文的分析/编码，应在本对话内直接完成，不要为了“委派”而创建队列。
+
+【参数】tasks（字符串数组）或 tasks_text（多行，每行一条）二选一；每项是一条将来由系统按队列顺序执行的指令文案。agent_mode：single（默认）或 multi（仅表示队列内每条子任务使用的执行模式，需系统已启用多代理）；非“把主对话拆给子代理”。schedule_mode：manual（默认）或 cron；cron 须填 cron_expr（5 段，如 "0 */6 * * *"）。
+
+【执行】默认创建后为 pending，不自动跑。execute_now=true 可创建后立即跑；否则之后调用 batch_task_start。Cron 自动下一轮需 schedule_enabled 为 true（可用 batch_task_schedule_enabled）。`,
+		ShortDescription: "任务管理：创建批量任务队列（登记多条指令，可选立即或 Cron）",
 		InputSchema: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"title": map[string]interface{}{
 					"type":        "string",
-					"description": "可选标题",
+					"description": "可选队列标题，便于在任务管理中识别",
 				},
 				"role": map[string]interface{}{
 					"type":        "string",
-					"description": "角色名称，空表示默认",
+					"description": "队列使用的角色名，空表示默认",
 				},
 				"tasks": map[string]interface{}{
 					"type":        "array",
-					"description": "任务指令列表，每项一条",
+					"description": "队列中的子任务指令，每项一条独立待执行文案（与 tasks_text 二选一）",
 					"items":       map[string]interface{}{"type": "string"},
 				},
 				"tasks_text": map[string]interface{}{
 					"type":        "string",
-					"description": "多行文本，每行一条任务（与 tasks 二选一）",
+					"description": "多行文本，每行一条子任务指令（与 tasks 二选一）",
 				},
 				"agent_mode": map[string]interface{}{
 					"type":        "string",
-					"description": "single 或 multi",
+					"description": "队列内子任务的执行模式：single 或 multi（multi 需系统启用多代理；非子代理委派语义）",
 					"enum":        []string{"single", "multi"},
 				},
 				"schedule_mode": map[string]interface{}{
 					"type":        "string",
-					"description": "manual 或 cron",
+					"description": "manual（仅手工/启动后跑）或 cron（按表达式触发）",
 					"enum":        []string{"manual", "cron"},
 				},
 				"cron_expr": map[string]interface{}{
 					"type":        "string",
-					"description": "schedule_mode 为 cron 时必填。标准 5 段格式：分钟 小时 日 月 星期，例如 \"0 */6 * * *\"（每6小时）、\"30 2 * * 1-5\"（工作日凌晨2:30）",
+					"description": "schedule_mode 为 cron 时必填。标准 5 段：分钟 小时 日 月 星期，例如 \"0 */6 * * *\"、\"30 2 * * 1-5\"",
 				},
 				"execute_now": map[string]interface{}{
 					"type":        "boolean",
-					"description": "是否创建后立即执行，默认 false",
+					"description": "创建后是否立即开始执行队列，默认 false（pending，需 batch_task_start）",
 				},
 			},
 		},

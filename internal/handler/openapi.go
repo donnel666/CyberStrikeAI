@@ -1499,6 +1499,76 @@ func (h *OpenAPIHandler) GetOpenAPISpec(c *gin.Context) {
 					},
 				},
 			},
+			"/api/eino-agent": map[string]interface{}{
+				"post": map[string]interface{}{
+					"tags":        []string{"对话交互"},
+					"summary":     "发送消息并获取 AI 回复（Eino ADK 单代理，非流式）",
+					"description": "与 `POST /api/agent-loop` 请求体相同，由 **CloudWeGo Eino** `adk.NewChatModelAgent` + `adk.NewRunner.Run` 执行（单代理 MCP 工具链）。**不依赖** `multi_agent.enabled`；`multi_agent.eino_skills` / `eino_middleware` 等与多代理主代理一致时可生效。支持 `webshellConnectionId`。",
+					"operationId": "sendMessageEinoSingleAgent",
+					"requestBody": map[string]interface{}{
+						"required": true,
+						"content": map[string]interface{}{
+							"application/json": map[string]interface{}{
+								"schema": map[string]interface{}{
+									"type": "object",
+									"properties": map[string]interface{}{
+										"message":              map[string]interface{}{"type": "string"},
+										"conversationId":       map[string]interface{}{"type": "string"},
+										"role":                 map[string]interface{}{"type": "string"},
+										"webshellConnectionId": map[string]interface{}{"type": "string"},
+									},
+									"required": []string{"message"},
+								},
+							},
+						},
+					},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{"description": "成功，响应格式同 /api/agent-loop"},
+						"400": map[string]interface{}{"description": "参数错误"},
+						"401": map[string]interface{}{"description": "未授权"},
+						"500": map[string]interface{}{"description": "执行失败"},
+					},
+				},
+			},
+			"/api/eino-agent/stream": map[string]interface{}{
+				"post": map[string]interface{}{
+					"tags":        []string{"对话交互"},
+					"summary":     "发送消息并获取 AI 回复（Eino ADK 单代理，SSE）",
+					"description": "与 `POST /api/agent-loop/stream` 类似；由 Eino **单代理** ADK 执行。事件类型与多代理流式一致（含 `tool_call` / `response_delta` 等）。**不依赖** `multi_agent.enabled`。",
+					"operationId": "sendMessageEinoSingleAgentStream",
+					"requestBody": map[string]interface{}{
+						"required": true,
+						"content": map[string]interface{}{
+							"application/json": map[string]interface{}{
+								"schema": map[string]interface{}{
+									"type": "object",
+									"properties": map[string]interface{}{
+										"message":              map[string]interface{}{"type": "string"},
+										"conversationId":       map[string]interface{}{"type": "string"},
+										"role":                 map[string]interface{}{"type": "string"},
+										"webshellConnectionId": map[string]interface{}{"type": "string"},
+									},
+									"required": []string{"message"},
+								},
+							},
+						},
+					},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{
+							"description": "text/event-stream（SSE）",
+							"content": map[string]interface{}{
+								"text/event-stream": map[string]interface{}{
+									"schema": map[string]interface{}{
+										"type":        "string",
+										"description": "SSE 流",
+									},
+								},
+							},
+						},
+						"401": map[string]interface{}{"description": "未授权"},
+					},
+				},
+			},
 			"/api/multi-agent": map[string]interface{}{
 				"post": map[string]interface{}{
 					"tags":        []string{"对话交互"},

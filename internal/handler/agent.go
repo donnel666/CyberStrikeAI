@@ -177,7 +177,7 @@ type ChatRequest struct {
 	Role                 string           `json:"role,omitempty"` // 角色名称
 	Attachments          []ChatAttachment `json:"attachments,omitempty"`
 	WebShellConnectionID string           `json:"webshellConnectionId,omitempty"` // WebShell 管理 - AI 助手：当前选中的连接 ID，仅使用 webshell_* 工具
-	// Orchestration 仅对 /api/multi-agent、/api/multi-agent/stream：deep | plan_execute | supervisor；空则等同 deep。机器人/批量等无请求体时由服务端默认 deep。
+	// Orchestration 仅对 /api/multi-agent、/api/multi-agent/stream：deep | plan_execute | supervisor；空则等同 deep。机器人/批量等无请求体时由服务端默认 deep。/api/eino-agent* 不使用此字段。
 	Orchestration string `json:"orchestration,omitempty"`
 }
 
