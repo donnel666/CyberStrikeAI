@@ -320,7 +320,7 @@ func (b *Builder) formatProcessDetailsForAttackChain(details []database.ProcessD
 		}
 
 		// 1) 编排器的工具调用/结果：保留（这是“主 agent 调了什么工具”）
-		if (d.EventType == "tool_call" || d.EventType == "tool_result" || d.EventType == "tool_calls_detected" || d.EventType == "iteration" || d.EventType == "eino_recovery") && einoRole == "orchestrator" {
+		if (d.EventType == "tool_call" || d.EventType == "tool_result" || d.EventType == "tool_calls_detected" || d.EventType == "iteration") && einoRole == "orchestrator" {
 			sb.WriteString("[")
 			sb.WriteString(d.EventType)
 			sb.WriteString("] ")

@@ -160,17 +160,17 @@ func runMCPToolInvocation(
 }
 
 // UnknownToolReminderHandler 供 compose.ToolsNodeConfig.UnknownToolsHandler 使用：
-// 模型请求了未注册的工具名时，返回一个「可恢复」的错误，让上层 runner 触发重试与纠错提示，
-// 同时避免 UI 永远停留在“执行中”（runner 会在 recoverable 分支 flush 掉 pending 的 tool_call）。
+// 模型请求了未注册的工具名时，返回一个「软错误」工具结果（nil error），
+// 让模型在同一轮继续自我修正，避免触发 run-loop 级别的 full rerun。
 // 不进行名称猜测或映射，避免误执行。
 func UnknownToolReminderHandler() func(ctx context.Context, name, input string) (string, error) {
 	return func(ctx context.Context, name, input string) (string, error) {
 		_ = ctx
 		_ = input
 		requested := strings.TrimSpace(name)
-		// Return a recoverable error that still carries a friendly, bilingual hint.
-		// This will be caught by multiagent runner as "tool not found" and trigger a retry.
-		return "", fmt.Errorf("tool %q not found: %s", requested, unknownToolReminderText(requested))
+		// Return a soft tool-result error so the graph keeps running and the LLM
+		// can correct tool name/arguments within the same run.
+		return ToolErrorPrefix + unknownToolReminderText(requested), nil
 	}
 }
 
